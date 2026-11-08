@@ -1,18 +1,22 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cytnx.hpp>
+#include <iostream>
 #include <limits>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
-#include "tci/construction_destruction.h"
-#include "tci/cytnx_tensor_traits.h"
-#include "tci/cytnx_typed_tensor.h"
-#include "tci/tensor_linear_algebra.h"
-#include "tci/tensor_traits.h"
+#include "tcapi/construction_destruction.h"
+#include "tcapi/cytnx_tensor_traits.h"
+#include "tcapi/cytnx_typed_tensor.h"
+#include "tcapi/tensor_linear_algebra.h"
+#include "tcapi/tensor_traits.h"
 
-namespace tci {
+namespace tcapi {
 
   // Helper: Convert elem_t<TenT> to cytnx::Type
   namespace detail {
@@ -29,10 +33,72 @@ namespace tci {
         static_assert(sizeof(ElemT) == 0, "Unsupported element type");
       }
     }
+
+    // `t` converted to the complex type of TenT's precision, cplx_ten_t<TenT>'s
+    // element type, or `t` itself when it already has it. A cplx_ten_t<TenT>
+    // whose storage has the other precision is read as the wrong type: the
+    // double 1.0 read as complex64 has the imaginary part 1.875.
+    template <typename TenT> cytnx::Tensor as_cplx_of(const cytnx::Tensor& t) {
+      const auto dtype = elem_to_cytnx_type<cplx_t<TenT>>();
+      return t.dtype() == dtype ? t : t.astype(dtype);
+    }
+
+    // A TCAPI zeroth-order tensor (shape {}, one element) is held as a Cytnx
+    // tensor of shape {}, which Cytnx produces only by reshaping a one-element
+    // tensor: its tensor constructor rejects an empty shape ("Must at least have
+    // one element"), its tensor addition and subtraction build their output
+    // through that constructor and reject one the same way, and its element
+    // printer faults on one. allocate builds one through new_backend; close and
+    // linear_combine view one as shape {1} through as_rank1; show prints its
+    // element itself. Shapes are passed to reshape as cytnx_int64, because
+    // Tensor::reshape's cytnx_uint64 overload indexes element 0 of the vector.
+
+    /// True for a zeroth-order tensor; false for a default-constructed one,
+    /// whose shape is also empty but whose dtype is Void.
+    inline bool is_rank0(const cytnx::Tensor& t) {
+      return t.dtype() != cytnx::Type.Void && t.shape().empty();
+    }
+
+    /// Reshapes a one-element tensor to shape {}.
+    inline void make_rank0_(cytnx::Tensor& t) { t.reshape_(std::vector<cytnx::cytnx_int64>{}); }
+
+    /// A zeroth-order tensor viewed as shape {1}; any other tensor as it is.
+    inline cytnx::Tensor as_rank1(const cytnx::Tensor& t) {
+      return is_rank0(t) ? t.reshape(std::vector<cytnx::cytnx_int64>{1}) : t;
+    }
+
+    /// Throws std::invalid_argument when some but not all of `ins` are
+    /// zeroth-order. as_rank1 views a zeroth-order input as shape {1}, which
+    /// Cytnx's addition broadcasts against any other shape, so without this a
+    /// zeroth-order input beside a tensor of another shape would be summed
+    /// instead of rejected. Beside a default-constructed tensor it would fail
+    /// inside Cytnx's addition, with an error that names neither.
+    template <typename TenT>
+    void require_rank0_all_or_none(const List<CRef<TenT>>& ins, const char* what) {
+      const bool first = is_rank0(ins[0].get().backend);
+      for (const auto& in : ins) {
+        if (is_rank0(in.get().backend) != first) {
+          throw std::invalid_argument(std::string(what)
+                                      + ": a zeroth-order input requires every input to be "
+                                        "zeroth-order");
+        }
+      }
+    }
+
+    /// A Cytnx tensor of `shape`, zeroth-order when `shape` is empty.
+    inline cytnx::Tensor new_backend(const std::vector<cytnx::cytnx_uint64>& shape,
+                                     const unsigned int dtype, const int device) {
+      if (shape.empty()) {
+        cytnx::Tensor t(std::vector<cytnx::cytnx_uint64>{1}, dtype, device);
+        make_rank0_(t);
+        return t;
+      }
+      return cytnx::Tensor(shape, dtype, device);
+    }
   }  // namespace detail
 
   // Template function declarations (non-specialized)
-  // These are separate from the main TCI header declarations to avoid conflicts
+  // These are separate from the main TCAPI header declarations to avoid conflicts
 
   // Read-only getter functions for TenT
   template <typename TenT> void get_elem(context_handle_t<TenT>& ctx, const TenT& a,
@@ -67,15 +133,15 @@ namespace tci {
     static bool warned = false;
     if (!warned) {
       // Check suppression flag
-      const char* suppress = std::getenv("TCI_SUPPRESS_FUTURE_API_WARNING");
+      const char* suppress = std::getenv("TCAPI_SUPPRESS_FUTURE_API_WARNING");
 
       // Show warning by default, unless explicitly suppressed
       if (!suppress || std::atoi(suppress) == 0) {
         std::cerr
-            << "[TCI Warning] tci::get_elem void overload is reserved for future GPU support.\n"
+            << "[TCAPI Warning] tcapi::get_elem void overload is reserved for future GPU support.\n"
             << "  This call is currently forwarded to the return-value version.\n"
-            << "  Recommended migration: auto elem = tci::get_elem(ctx, a, coors);\n"
-            << "  To suppress this warning: export TCI_SUPPRESS_FUTURE_API_WARNING=1\n";
+            << "  Recommended migration: auto elem = tcapi::get_elem(ctx, a, coors);\n"
+            << "  To suppress this warning: export TCAPI_SUPPRESS_FUTURE_API_WARNING=1\n";
       }
       warned = true;
     }
@@ -162,6 +228,10 @@ namespace tci {
   }
 
   template <typename TenT> void show(context_handle_t<TenT>& ctx, const TenT& a) {
+    if (detail::is_rank0(a.backend)) {
+      std::cout << "Shape : ()\n" << get_elem(ctx, a, elem_coors_t<TenT>{}) << std::endl;
+      return;
+    }
     std::cout << a.backend << std::endl;
   }
 
@@ -288,8 +358,8 @@ namespace tci {
       // Already complex, just copy
       out.backend = in.backend.clone();
     } else {
-      // Convert real to complex
-      out.backend = in.backend.astype(cytnx::Type.ComplexDouble);
+      // Convert real to the complex type of the same precision
+      out.backend = detail::as_cplx_of<TenT>(in.backend);
     }
   }
 
@@ -396,7 +466,7 @@ namespace tci {
       cytnx::cytnx_uint64 curr_idx2 = std::distance(axis_map.begin(), it2);
 
       // Debug output
-      if (std::getenv("TCI_VERBOSE")) {
+      if (std::getenv("TCAPI_VERBOSE")) {
         std::cerr << "trace: orig(" << orig_idx1 << "," << orig_idx2 << ") -> curr(" << curr_idx1
                   << "," << curr_idx2 << ") rank=" << result.shape().size() << std::endl;
       }
@@ -407,6 +477,12 @@ namespace tci {
       // Update axis mapping: remove the two traced axes
       axis_map.erase(it1 < it2 ? it1 : it2);
       axis_map.erase(it1 < it2 ? (it2 - 1) : it1);
+    }
+
+    // With every bond paired, Cytnx's Trace leaves shape {1}; TCAPI's result is
+    // zeroth-order.
+    if (axis_map.empty() && !result.shape().empty()) {
+      detail::make_rank0_(result);
     }
 
     inout.backend = result;
@@ -471,7 +547,9 @@ namespace tci {
         auto b_flat = flatten(b.backend, true);
         cytnx::Tensor outer_matrix = cytnx::linalg::Matmul(a_flat, b_flat);
 
-        std::vector<cytnx::cytnx_uint64> target_shape;
+        // cytnx_int64, so that an empty target shape (two zeroth-order operands)
+        // takes the reshape overload that does not index element 0.
+        std::vector<cytnx::cytnx_int64> target_shape;
         auto a_shape = a.backend.shape();
         auto b_shape = b.backend.shape();
         target_shape.insert(target_shape.end(), a_shape.begin(), a_shape.end());
@@ -510,6 +588,11 @@ namespace tci {
           if (valid_perm.size() == result.shape().size()) {
             result = result.permute(valid_perm);
           }
+        }
+        // TCAPI V1: "Empty gamma yields a scalar", a zeroth-order tensor, where
+        // Tensordot leaves shape {1}.
+        if (bd_labs_c.empty()) {
+          detail::make_rank0_(result);
         }
         c.backend = std::move(result);
       } catch (const std::exception& e) {
@@ -602,30 +685,38 @@ namespace tci {
 
   // Linear combination (out-of-place)
   template <typename TenT>
-  TenT linear_combine(context_handle_t<TenT>& ctx, const std::vector<TenT>& ins) {
+  TenT linear_combine(context_handle_t<TenT>& ctx, const List<CRef<TenT>>& ins) {
     TenT out;
     if (ins.empty()) {
       return out;
     }
+    detail::require_rank0_all_or_none(ins, "linear_combine");
 
-    out.backend = ins[0].backend.clone();
+    out.backend = detail::as_rank1(ins[0].get().backend).clone();
     for (size_t i = 1; i < ins.size(); ++i) {
-      out.backend = out.backend + ins[i].backend;
+      out.backend = out.backend + detail::as_rank1(ins[i].get().backend);
+    }
+    if (detail::is_rank0(ins[0].get().backend)) {
+      detail::make_rank0_(out.backend);
     }
     return out;
   }
 
   template <typename TenT> TenT linear_combine(context_handle_t<TenT>& ctx,
-                                               const std::vector<TenT>& ins,
+                                               const List<CRef<TenT>>& ins,
                                                const std::vector<elem_t<TenT>>& coefs) {
     TenT out;
     if (ins.empty() || ins.size() != coefs.size()) {
       return out;
     }
+    detail::require_rank0_all_or_none(ins, "linear_combine");
 
-    out.backend = ins[0].backend * coefs[0];
+    out.backend = detail::as_rank1(ins[0].get().backend) * coefs[0];
     for (size_t i = 1; i < ins.size(); ++i) {
-      out.backend = out.backend + ins[i].backend * coefs[i];
+      out.backend = out.backend + detail::as_rank1(ins[i].get().backend) * coefs[i];
+    }
+    if (detail::is_rank0(ins[0].get().backend)) {
+      detail::make_rank0_(out.backend);
     }
     return out;
   }
@@ -658,12 +749,12 @@ namespace tci {
     // (notably ARMPL) call abort() inside the routine.  An abort is a signal,
     // not an exception, so the try/catch fallback below cannot recover from it.
     //
-    // TCICYTNX_USE_GESDD therefore gates the gesdd path; it is decided at build time
+    // TCAPICYTNX_USE_GESDD therefore gates the gesdd path; it is decided at build time
     // from the BLAS vendor (see CMakeLists.txt), mirroring trunc_svd.  Gesvd
     // (gesvd, QR iteration) is always stable and is the default everywhere else.
     // Both return {S, U, V†} in the same order.
     std::vector<cytnx::Tensor> svd_result;
-#ifdef TCICYTNX_USE_GESDD
+#ifdef TCAPICYTNX_USE_GESDD
     // For small matrices the speed difference is negligible and the try/catch
     // overhead is proportionally large, so use the stable path directly.
     constexpr cytnx::cytnx_uint64 kGesddMinDim = 64;
@@ -700,8 +791,7 @@ namespace tci {
     // follows the input, so only a complex S needs converting — and the guard
     // has to be exactly that, because Storage::real() rejects non-complex
     // storage rather than passing it through.
-    cytnx::Tensor s_real =
-        cytnx::Type.is_complex(s_backend.dtype()) ? s_backend.real() : s_backend;
+    cytnx::Tensor s_real = cytnx::Type.is_complex(s_backend.dtype()) ? s_backend.real() : s_backend;
 
     // Reshape U
     shape_t<TenT> u_shape;
@@ -715,8 +805,9 @@ namespace tci {
     }
     u.backend = u_backend.reshape(u_cytnx_shape);
 
-    // Set S (as real tensor)
-    s_diag.backend = s_real;
+    // TCAPI V1: sigma is a real second-order diagonal tensor of shape {kappa, kappa},
+    // kappa = min(I, J). It is stored densely, as eye and diag store theirs.
+    s_diag.backend = cytnx::linalg::Diag(s_real);
 
     // Reshape V†
     shape_t<TenT> v_shape;
@@ -858,17 +949,17 @@ namespace tci {
     // Call full version with chi_min=1, target_trunc_err=0
     constexpr bond_dim_t<TenT> chi_min = 1;
     constexpr real_t<TenT> target_trunc_err = 0.0;
-    trunc_svd(ctx, a, num_of_bds_as_row, u, s_diag, v_dag, trunc_err, chi_min, chi_max,
-              target_trunc_err, s_min);
+    trunc_svd(ctx, a, num_of_bds_as_row, u, s_diag, v_dag, trunc_err, chi_max, s_min, chi_min,
+              target_trunc_err);
   }
 
-  // Truncated SVD - (chi_min, chi_max, target_trunc_err, s_min). The spec's
+  // Truncated SVD - (chi_max, s_min, chi_min, target_trunc_err). The spec's
   // general truncation strategy; the (chi_max, s_min) form above delegates to it.
   template <typename TenT>
   void trunc_svd(context_handle_t<TenT>& ctx, const TenT& a, const order_t<TenT> num_of_bds_as_row,
                  TenT& u, real_ten_t<TenT>& s_diag, TenT& v_dag, real_t<TenT>& trunc_err,
-                 const bond_dim_t<TenT> chi_min, const bond_dim_t<TenT> chi_max,
-                 const real_t<TenT> target_trunc_err, const real_t<TenT> s_min) {
+                 const bond_dim_t<TenT> chi_max, const real_t<TenT> s_min,
+                 const bond_dim_t<TenT> chi_min, const real_t<TenT> target_trunc_err) {
     // Get shape and compute matrix dimensions
     auto a_shape = shape(ctx, a);
     cytnx::cytnx_uint64 left_dim = 1;
@@ -893,7 +984,7 @@ namespace tci {
     // (notably ARMPL) call abort() inside the routine.  An abort is a signal,
     // not an exception, so the try/catch fallback below cannot recover from it.
     //
-    // TCICYTNX_USE_GESDD is therefore opted into only for backends known to report
+    // TCAPICYTNX_USE_GESDD is therefore opted into only for backends known to report
     // failures catchably.  The decision is made at build time (see
     // CMakeLists.txt) from the BLAS vendor, so the abort-prone vendor name
     // never leaks into this algorithm code.  Gesvd_truncate (gesvd, QR
@@ -907,7 +998,7 @@ namespace tci {
     // discarded weight derived by subtracting a double-accumulated sum from it
     // is that rounding once the real weight falls below it.
     std::vector<cytnx::Tensor> svd_result;
-#ifdef TCICYTNX_USE_GESDD
+#ifdef TCAPICYTNX_USE_GESDD
     // For small matrices the speed difference is negligible and the try/catch
     // overhead is proportionally large, so use the stable path directly.  The
     // threshold is chosen so that gesdd's asymptotic advantage (~2x for large
@@ -1108,7 +1199,7 @@ namespace tci {
       bond_dim = new_bond_dim;
     }
 
-    // Calculate truncation error per TCI spec:
+    // Calculate truncation error per TCAPI spec:
     //
     //   epsilon = sum(s_discarded^2) / sum(s_all^2)
     //
@@ -1121,8 +1212,7 @@ namespace tci {
     }
 
     // Extract real singular values
-    cytnx::Tensor s_real =
-        cytnx::Type.is_complex(s_backend.dtype()) ? s_backend.real() : s_backend;
+    cytnx::Tensor s_real = cytnx::Type.is_complex(s_backend.dtype()) ? s_backend.real() : s_backend;
 
     // Reshape U
     shape_t<TenT> u_shape;
@@ -1136,8 +1226,9 @@ namespace tci {
     }
     u.backend = u_backend.reshape(u_cytnx_shape);
 
-    // Set S (as real tensor)
-    s_diag.backend = s_real;
+    // TCAPI V1: sigma is a real second-order diagonal tensor of shape {chi, chi},
+    // chi the retained count. It is stored densely, as eye and diag store theirs.
+    s_diag.backend = cytnx::linalg::Diag(s_real);
 
     // Reshape V†
     shape_t<TenT> v_shape;
@@ -1182,9 +1273,7 @@ namespace tci {
     if (w_diag.backend.shape().size() != 1) {
       w_diag.backend.reshape_({static_cast<cytnx::cytnx_int64>(row_dim)});
     }
-    if (w_diag.backend.dtype() != cytnx::Type.ComplexDouble) {
-      w_diag.backend = w_diag.backend.astype(cytnx::Type.ComplexDouble);
-    }
+    w_diag.backend = detail::as_cplx_of<TenT>(w_diag.backend);
   }
 
   // Eigenvalue decomposition - eigvalsh (hermitian matrix eigenvalues)
@@ -1250,17 +1339,16 @@ namespace tci {
     if (w_diag.backend.shape().size() != 1) {
       w_diag.backend.reshape_({static_cast<cytnx::cytnx_int64>(row_dim)});
     }
-    if (w_diag.backend.dtype() != cytnx::Type.ComplexDouble) {
-      w_diag.backend = w_diag.backend.astype(cytnx::Type.ComplexDouble);
-    }
+    w_diag.backend = detail::as_cplx_of<TenT>(w_diag.backend);
+    // TCAPI V1: lambda_mat is a complex second-order diagonal tensor of shape
+    // {I, I}, stored densely; eigvals keeps the first-order list.
+    w_diag.backend = cytnx::linalg::Diag(w_diag.backend);
 
     if (v.backend.shape().size() != 2) {
       v.backend.reshape_(
           {static_cast<cytnx::cytnx_int64>(row_dim), static_cast<cytnx::cytnx_int64>(row_dim)});
     }
-    if (v.backend.dtype() != cytnx::Type.ComplexDouble) {
-      v.backend = v.backend.astype(cytnx::Type.ComplexDouble);
-    }
+    v.backend = detail::as_cplx_of<TenT>(v.backend);
   }
 
   // Eigenvalue decomposition - eigh (hermitian matrix eigenvalues and eigenvectors)
@@ -1294,6 +1382,9 @@ namespace tci {
     if (w_diag.backend.shape().size() != 1) {
       w_diag.backend.reshape_({static_cast<cytnx::cytnx_int64>(row_dim)});
     }
+    // TCAPI V1: lambda_mat is a real second-order diagonal tensor of shape
+    // {I, I}, stored densely; eigvalsh keeps the first-order list.
+    w_diag.backend = cytnx::linalg::Diag(w_diag.backend);
 
     if (v.backend.shape().size() != 2) {
       v.backend.reshape_(
@@ -1310,26 +1401,24 @@ namespace tci {
       return false;
     }
 
-    // Calculate the difference between tensors
-    cytnx::Tensor diff = a.backend - b.backend;
-
-    // Calculate the Frobenius norm of the difference
-    auto norm_result = cytnx::linalg::Norm(diff);
-
-    // Extract the scalar value
-    double diff_norm;
-    if (norm_result.dtype() == cytnx::Type.Double) {
-      diff_norm = static_cast<double>(norm_result.at({0}).real());
-    } else if (norm_result.dtype() == cytnx::Type.ComplexDouble) {
-      diff_norm = static_cast<double>(norm_result.at({0}).real());
-    } else {
-      auto converted = norm_result.astype(cytnx::Type.Double);
-      diff_norm = static_cast<double>(converted.at({0}).real());
+    // TCAPI V1, which requires epsilon >= 0: the comparison succeeds iff the
+    // shapes match and max_i |a_i - b_i| <= epsilon, |.| the modulus for
+    // complex elements. Testing every element against epsilon, rather than
+    // taking a maximum first, also makes a NaN difference fail the comparison.
+    // The magnitudes are read through a host pointer, so they move to the CPU
+    // first, as svd's singular values do.
+    cytnx::Tensor diff = detail::as_rank1(a.backend) - detail::as_rank1(b.backend);
+    cytnx::Tensor magnitude
+        = cytnx::linalg::Abs(diff).astype(cytnx::Type.Double).to(cytnx::Device.cpu).contiguous();
+    const double eps_magnitude = std::abs(static_cast<double>(epsilon));
+    const auto count = static_cast<cytnx::cytnx_uint64>(magnitude.storage().size());
+    const auto* m = magnitude.storage().template data<double>();
+    for (cytnx::cytnx_uint64 i = 0; i < count; ++i) {
+      if (!(m[i] <= eps_magnitude)) {
+        return false;
+      }
     }
-
-    // Compare with epsilon tolerance
-    double eps_magnitude = std::abs(epsilon);
-    return diff_norm <= eps_magnitude;
+    return true;
   }
 
   // Tensor Manipulation functions - independent implementations needed
@@ -1495,13 +1584,14 @@ namespace tci {
 
   // concatenate
   // Restored from git show b7ecb2a9^:source/tensor_manipulation.cpp
-  template <typename TenT> void concatenate(context_handle_t<TenT>& ctx, const List<TenT>& ins,
-                                            const bond_idx_t<TenT> axis, TenT& out) {
+  template <typename TenT> TenT concatenate(context_handle_t<TenT>& ctx,
+                                            const List<CRef<TenT>>& ins,
+                                            const bond_idx_t<TenT> axis) {
     if (ins.empty()) {
       throw std::invalid_argument("Cannot concatenate empty list of tensors");
     }
 
-    const auto& first = ins[0].backend;
+    const auto& first = ins[0].get().backend;
     auto first_shape = first.shape();
 
     if (axis >= first_shape.size()) {
@@ -1511,7 +1601,7 @@ namespace tci {
     // Check all tensors have compatible shapes
     size_t total_concat_dim = 0;
     for (size_t i = 0; i < ins.size(); ++i) {
-      const auto& tensor = ins[i].backend;
+      const auto& tensor = ins[i].get().backend;
       auto shape = tensor.shape();
 
       if (shape.size() != first_shape.size()) {
@@ -1533,11 +1623,13 @@ namespace tci {
     out_shape[axis] = total_concat_dim;
 
     // Create output tensor
+    TenT out;
     out.backend = cytnx::zeros(out_shape, first.dtype(), first.device());
 
     // Copy data from each input tensor to appropriate slice of output
     size_t offset = 0;
-    for (const auto& tensor : ins) {
+    for (const auto& ref : ins) {
+      const auto& tensor = ref.get();
       auto tensor_shape = tensor.backend.shape();
 
       // Create coordinate vectors for slicing
@@ -1554,21 +1646,23 @@ namespace tci {
       out.backend.set(accessors, tensor.backend);
       offset += tensor_shape[axis];
     }
+    return out;
   }
 
   // stack
   // Restored from git show b7ecb2a9^:source/tensor_manipulation.cpp
-  template <typename TenT> void stack(context_handle_t<TenT>& ctx, const List<TenT>& ins,
-                                      const bond_idx_t<TenT> axis, TenT& out) {
+  template <typename TenT> TenT stack(context_handle_t<TenT>& ctx, const List<CRef<TenT>>& ins,
+                                      const bond_idx_t<TenT> axis) {
     if (ins.empty()) {
       throw std::invalid_argument("Cannot stack empty list of tensors");
     }
 
     // Implement stacking by creating a new dimension at axis
     // First verify all tensors have the same shape
-    const auto& first_shape = ins[0].backend.shape();
+    const auto& first = ins[0].get().backend;
+    const auto& first_shape = first.shape();
     for (size_t i = 1; i < ins.size(); ++i) {
-      if (ins[i].backend.shape() != first_shape) {
+      if (ins[i].get().backend.shape() != first_shape) {
         throw std::invalid_argument("All tensors must have the same shape for stacking");
       }
     }
@@ -1587,7 +1681,8 @@ namespace tci {
     }
 
     // Create output tensor
-    out.backend = cytnx::zeros(new_shape, ins[0].backend.dtype(), ins[0].backend.device());
+    TenT out;
+    out.backend = cytnx::zeros(new_shape, first.dtype(), first.device());
 
     // Copy data from each tensor
     for (size_t tensor_idx = 0; tensor_idx < ins.size(); ++tensor_idx) {
@@ -1603,8 +1698,9 @@ namespace tci {
       }
 
       // Copy the tensor data to the appropriate slice using set method
-      out.backend.set(accessors, ins[tensor_idx].backend);
+      out.backend.set(accessors, ins[tensor_idx].get().backend);
     }
+    return out;
   }
 
   // ========================================================================
@@ -1621,12 +1717,12 @@ namespace tci {
         // Base case: apply function to element at current coordinates
         auto& elem = tensor.backend.template at<elem_t<TenT>>(coords);
         // Convert coords to elem_coors_t<TenT>
-        elem_coors_t<TenT> tci_coords;
-        tci_coords.reserve(coords.size());
+        elem_coors_t<TenT> tcapi_coords;
+        tcapi_coords.reserve(coords.size());
         for (const auto& coord : coords) {
-          tci_coords.push_back(static_cast<elem_coor_t<TenT>>(coord));
+          tcapi_coords.push_back(static_cast<elem_coor_t<TenT>>(coord));
         }
-        std::invoke(f, elem, tci_coords);
+        std::invoke(f, elem, tcapi_coords);
       } else {
         // Recursive case: iterate through current dimension
         for (cytnx::cytnx_uint64 i = 0; i < shape[dim]; ++i) {
@@ -1646,12 +1742,12 @@ namespace tci {
         // Base case: apply function to element at current coordinates
         const auto& elem = tensor.backend.template at<elem_t<TenT>>(coords);
         // Convert coords to elem_coors_t<TenT>
-        elem_coors_t<TenT> tci_coords;
-        tci_coords.reserve(coords.size());
+        elem_coors_t<TenT> tcapi_coords;
+        tcapi_coords.reserve(coords.size());
         for (const auto& coord : coords) {
-          tci_coords.push_back(static_cast<elem_coor_t<TenT>>(coord));
+          tcapi_coords.push_back(static_cast<elem_coor_t<TenT>>(coord));
         }
-        std::invoke(f, elem, tci_coords);
+        std::invoke(f, elem, tcapi_coords);
       } else {
         // Recursive case: iterate through current dimension
         for (cytnx::cytnx_uint64 i = 0; i < shape[dim]; ++i) {
@@ -1839,7 +1935,7 @@ namespace tci {
       cytnx_shape.push_back(static_cast<cytnx::cytnx_uint64>(dim));
     }
     result.backend
-        = cytnx::Tensor(cytnx_shape, detail::elem_to_cytnx_type<cytnx::cytnx_double>(), ctx);
+        = detail::new_backend(cytnx_shape, detail::elem_to_cytnx_type<cytnx::cytnx_double>(), ctx);
     return result;
   }
 
@@ -1853,7 +1949,7 @@ namespace tci {
       cytnx_shape.push_back(static_cast<cytnx::cytnx_uint64>(dim));
     }
     result.backend
-        = cytnx::Tensor(cytnx_shape, detail::elem_to_cytnx_type<cytnx::cytnx_float>(), ctx);
+        = detail::new_backend(cytnx_shape, detail::elem_to_cytnx_type<cytnx::cytnx_float>(), ctx);
     return result;
   }
 
@@ -1867,8 +1963,8 @@ namespace tci {
     for (const auto& dim : shape) {
       cytnx_shape.push_back(static_cast<cytnx::cytnx_uint64>(dim));
     }
-    result.backend
-        = cytnx::Tensor(cytnx_shape, detail::elem_to_cytnx_type<cytnx::cytnx_complex128>(), ctx);
+    result.backend = detail::new_backend(
+        cytnx_shape, detail::elem_to_cytnx_type<cytnx::cytnx_complex128>(), ctx);
     return result;
   }
 
@@ -1882,8 +1978,8 @@ namespace tci {
     for (const auto& dim : shape) {
       cytnx_shape.push_back(static_cast<cytnx::cytnx_uint64>(dim));
     }
-    result.backend
-        = cytnx::Tensor(cytnx_shape, detail::elem_to_cytnx_type<cytnx::cytnx_complex64>(), ctx);
+    result.backend = detail::new_backend(cytnx_shape,
+                                         detail::elem_to_cytnx_type<cytnx::cytnx_complex64>(), ctx);
     return result;
   }
 
@@ -2164,4 +2260,4 @@ namespace tci {
     // No-op for Cytnx
   }
 
-}  // namespace tci
+}  // namespace tcapi

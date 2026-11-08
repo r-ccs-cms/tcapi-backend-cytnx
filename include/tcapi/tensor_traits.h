@@ -2,20 +2,25 @@
 
 #include <complex>
 #include <cstddef>
+#include <functional>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-namespace tci {
+namespace tcapi {
 
   // Forward declaration of tensor_traits
   template <typename TenT> struct tensor_traits;
 
-  // Auxiliary types as specified in the TCI standard
+  // Auxiliary types as specified in the TCAPI standard
 
   // List type - currently restricted to std::vector
   template <typename T> using List = std::vector<T>;
+
+  // Non-owning const reference, used for the inputs of concatenate, stack and
+  // linear_combine (List<CRef<TenT>>)
+  template <typename T> using CRef = std::reference_wrapper<const T>;
 
   // Pair type - currently restricted to std::pair
   template <typename T, typename U> using Pair = std::pair<T, U>;
@@ -76,7 +81,7 @@ namespace tci {
 
   template <typename TenT> using context_handle_t = typename tensor_traits<TenT>::context_handle_t;
 
-  // Composite type aliases as specified in TCI standard
+  // Composite type aliases as specified in TCAPI standard
   template <typename TenT> using bond_idx_pairs_t = List<Pair<bond_idx_t<TenT>, bond_idx_t<TenT>>>;
 
   template <typename TenT> using bond_idx_elem_coor_pair_map
@@ -112,4 +117,4 @@ namespace tci {
     static_assert(sizeof(TenT) == 0, "tensor_traits must be specialized for each tensor type");
   };
 
-}  // namespace tci
+}  // namespace tcapi

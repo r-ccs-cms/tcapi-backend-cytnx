@@ -1,12 +1,12 @@
 /**
  * @file simple_tensor_operations.cpp
- * @brief Simple examples demonstrating TCI usage for basic tensor operations
+ * @brief Simple examples demonstrating TCAPI usage for basic tensor operations
  *
- * This file contains practical examples showing how to use the TCI
- * (Tensor Computing Interface) for common tensor computations.
+ * This file contains practical examples showing how to use the TCAPI
+ * (Tensor Computing Application Programming Interface) for common tensor computations.
  */
 
-#include <tci/tci.h>
+#include <tcapi/tcapi.h>
 
 #include <complex>
 #include <functional>
@@ -15,8 +15,8 @@
 #include <random>
 #include <vector>
 
-using Ten = tci::CytnxTensor<cytnx::cytnx_complex128>;
-using namespace tci;
+using Ten = tcapi::CytnxTensor<cytnx::cytnx_complex128>;
+using namespace tcapi;
 
 /**
  * @brief Demonstrate basic tensor creation and manipulation
@@ -99,25 +99,28 @@ void linear_algebra_operations() {
 
   std::cout << "  SVD completed" << std::endl;
   std::cout << "    U shape: " << shape(ctx, U)[0] << "×" << shape(ctx, U)[1] << std::endl;
-  std::cout << "    S shape: " << shape(ctx, S)[0] << " (singular values)" << std::endl;
+  std::cout << "    S shape: " << shape(ctx, S)[0] << "×" << shape(ctx, S)[1]
+            << " (diagonal, singular values on the diagonal)" << std::endl;
   std::cout << "    V† shape: " << shape(ctx, V_dag)[0] << "×" << shape(ctx, V_dag)[1] << std::endl;
 
   // Print singular values
   std::cout << "  Singular values: ";
   for (size_t i = 0; i < shape(ctx, S)[0]; ++i) {
-    auto sv = get_elem(ctx, S, {static_cast<elem_coor_t<real_ten_t<Ten>>>(i)});
+    const auto c = static_cast<elem_coor_t<real_ten_t<Ten>>>(i);
+    auto sv = get_elem(ctx, S, {c, c});
     std::cout << std::setprecision(3) << sv << " ";
   }
   std::cout << std::endl;
 
   // Eigenvalue decomposition (for symmetric matrix)
-  real_ten_t<Ten> eigenvals;  // Eigenvalues are real
+  real_ten_t<Ten> eigenvals;  // Eigenvalues are real, on the diagonal of a square tensor
   Ten eigenvecs;
   eigh(ctx, A, 1, eigenvals, eigenvecs);
 
   std::cout << "  Eigenvalues: ";
   for (size_t i = 0; i < shape(ctx, eigenvals)[0]; ++i) {
-    auto ev = get_elem(ctx, eigenvals, {static_cast<elem_coor_t<real_ten_t<Ten>>>(i)});
+    const auto c = static_cast<elem_coor_t<real_ten_t<Ten>>>(i);
+    auto ev = get_elem(ctx, eigenvals, {c, c});
     std::cout << std::setprecision(3) << ev << " ";
   }
   std::cout << std::endl;
@@ -219,22 +222,22 @@ void io_and_utilities() {
 }
 
 /**
- * @brief Demonstrate TCI_VERBOSE environment variable
+ * @brief Demonstrate TCAPI_VERBOSE environment variable
  */
 void demonstrate_verbose_output() {
-  std::cout << "\n=== TCI_VERBOSE Demonstration ===" << std::endl;
-  std::cout << "Set TCI_VERBOSE environment variable to see debug output:" << std::endl;
-  std::cout << "  TCI_VERBOSE=1  - Function calls" << std::endl;
-  std::cout << "  TCI_VERBOSE=2  - Function calls + timing" << std::endl;
+  std::cout << "\n=== TCAPI_VERBOSE Demonstration ===" << std::endl;
+  std::cout << "Set TCAPI_VERBOSE environment variable to see debug output:" << std::endl;
+  std::cout << "  TCAPI_VERBOSE=1  - Function calls" << std::endl;
+  std::cout << "  TCAPI_VERBOSE=2  - Function calls + timing" << std::endl;
 
   context_handle_t<Ten> ctx;
   create_context(ctx);
 
-  // These operations will show debug output if TCI_VERBOSE is set
+  // These operations will show debug output if TCAPI_VERBOSE is set
   Ten A = eye<Ten>(ctx, 2);
   Ten B = zeros<Ten>(ctx, {2, 2});
 
-  // This will trigger TCI_VERBOSE output for show, close, and convert functions
+  // This will trigger TCAPI_VERBOSE output for show, close, and convert functions
   show(ctx, A);
   bool equal = close(ctx, A, B, 1e-6);
 
@@ -248,7 +251,8 @@ void demonstrate_verbose_output() {
 }
 
 int main() {
-  std::cout << "TCI (Tensor Computing Interface) - Usage Examples" << std::endl;
+  std::cout << "TCAPI (Tensor Computing Application Programming Interface) - Usage Examples"
+            << std::endl;
   std::cout << "=================================================" << std::endl;
 
   basic_tensor_operations();
