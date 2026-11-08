@@ -2,15 +2,6 @@ cmake_minimum_required(VERSION 3.24)
 
 project(TCAPITests LANGUAGES CXX)
 
-# ---- Options ----
-
-option(ENABLE_TEST_COVERAGE "Enable test coverage" OFF)
-option(TEST_INSTALLED_VERSION "Test the version found by find_package" OFF)
-
-# --- Import tools ----
-
-include(../cmake/tools.cmake)
-
 # ---- Dependencies ----
 
 # Add doctest via CPM.cmake (header-only mode)
@@ -29,11 +20,7 @@ if (doctest_ADDED)
 endif()
 
 if(NOT TARGET TCAPI::TCAPI)
-  if(TEST_INSTALLED_VERSION)
-    find_package(TCAPI REQUIRED)
-  else()
-    CPMAddPackage(NAME TCAPI SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
-  endif()
+  CPMAddPackage(NAME TCAPI SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
 endif()
 
 # ---- Create binary ----
@@ -46,19 +33,12 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
 message(STATUS "Created test executable: ${PROJECT_NAME}")
 
-add_custom_target(
-  check-format
-  COMMAND ${CMAKE_COMMAND} -E echo "Format check skipped: offline configuration"
-)
-
 # enable compiler warnings (temporarily disable -Werror for deprecated warnings)
-if(NOT TEST_INSTALLED_VERSION)
-  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    target_compile_options(TCAPI PUBLIC -Wall -Wpedantic -Wextra -Wno-error=deprecated-declarations)
-  elseif(MSVC)
-    target_compile_options(TCAPI PUBLIC /W4 /WX)
-    target_compile_definitions(${PROJECT_NAME} PUBLIC DOCTEST_CONFIG_USE_STD_HEADERS)
-  endif()
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+  target_compile_options(TCAPI PUBLIC -Wall -Wpedantic -Wextra -Wno-error=deprecated-declarations)
+elseif(MSVC)
+  target_compile_options(TCAPI PUBLIC /W4 /WX)
+  target_compile_definitions(${PROJECT_NAME} PUBLIC DOCTEST_CONFIG_USE_STD_HEADERS)
 endif()
 
 # ---- Add TCAPITests ----
@@ -67,8 +47,8 @@ enable_testing()
 add_test(NAME ${PROJECT_NAME} COMMAND ${PROJECT_NAME})
 
 # Run the examples that read decomposition outputs, so a change to an output's
-# shape fails this test project's ctest (configured with -Stest, as CI does)
-# instead of only the example binary. They exist when the parent project is
+# shape fails this test project's ctest (configured with -Stest) instead of
+# only the example binary. They exist when the parent project is
 # configured with BUILD_EXAMPLES (on by default).
 foreach(example svd_example simple_tensor_operations)
   if(TARGET ${example})
@@ -86,10 +66,3 @@ if(COMMAND configure_asan_odr_detection)
 endif()
 
 # ODR-related test targets removed as they are no longer needed
-
-# ---- code coverage ----
-
-if(ENABLE_TEST_COVERAGE)
-  target_compile_options(TCAPI PUBLIC -O0 -g -fprofile-arcs -ftest-coverage)
-  target_link_options(TCAPI PUBLIC -fprofile-arcs -ftest-coverage)
-endif()
