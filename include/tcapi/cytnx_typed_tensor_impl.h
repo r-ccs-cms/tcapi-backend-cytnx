@@ -50,7 +50,7 @@ namespace tcapi {
     /// one included, against any shape, so without this a zeroth-order input
     /// beside a tensor of another shape would be summed instead of rejected.
     /// Beside a default-constructed tensor it would fail inside Cytnx's
-    /// addition, with an error that names neither input.
+    /// arithmetic, with an error that names neither input.
     template <typename TenT>
     void require_rank0_all_or_none(const List<CRef<TenT>>& ins, const char* what) {
       const bool first = ins[0].get().backend.is_scalar();
@@ -486,8 +486,7 @@ namespace tcapi {
     if (treat_as_label_mode) {
       // NCONAnalysis walks the labels, not the bonds: it skips a label that is
       // neither contracted nor named in the output, and records an output label
-      // as a free bond even at a position past the operand's order. Either way
-      // a bond would reach the result unaccounted for.
+      // as a free bond even at a position past the operand's order.
       if (bd_labs_a.size() != rank_a || bd_labs_b.size() != rank_b) {
         throw std::invalid_argument("contract: each operand needs one label per bond");
       }

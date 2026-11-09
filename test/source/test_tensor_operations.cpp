@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cytnx.hpp>
 #include <functional>
+#include <stdexcept>
 
 // FIXME: Trace operations cause AddressSanitizer container-overflow in Cytnx internal code
 // This appears to be a bug in the Cytnx library itself (UniTensor::UniTensor constructor)
