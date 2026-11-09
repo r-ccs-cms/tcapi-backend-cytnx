@@ -93,8 +93,7 @@ TEST_CASE("TCAPI Matrix exponential - in-place real dtype preservation (float)")
   // which Cytnx rejects ("not support type with dtype=4"). The unified
   // post-block now takes the real part first so the precision-aligning cast is
   // real-to-real and never throws. Numerical correctness for cytnx_float is
-  // upstream-blocked on Cytnx single-precision Eigh and is covered by the
-  // double-precision cases above.
+  // checked by the conformance suite's exp tests.
   tcapi::context_handle_t<tcapi::CytnxTensor<cytnx::cytnx_float>> ctx;
   tcapi::create_context(ctx);
 

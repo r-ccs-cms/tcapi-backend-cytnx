@@ -10,14 +10,6 @@
 #include <doctest/doctest.h>
 #define TCAPI_NO_DEPRECATED_API
 #include <tcapi/tcapi.h>
-
-// Cytnx's single-precision Eig/Eigh return degenerate (~zero) eigenvalues for
-// otherwise well-conditioned inputs, producing exp(0) = I instead of the true
-// matrix exponential. Skip the precision-sensitive exp tests for single-
-// precision instantiations until the upstream Cytnx fix lands; double-
-// precision instances continue to run.
-#define TCAPICT_SKIP_EXP_SINGLE_PRECISION
-
 #include <tcapict/adapters/doctest.h>
 
 using CytnxRealF = tcapi::CytnxTensor<cytnx::cytnx_float>;

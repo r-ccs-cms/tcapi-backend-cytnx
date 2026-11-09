@@ -365,7 +365,7 @@ namespace tcapi {
 
   // Norm calculation
   template <typename TenT> real_t<TenT> norm(context_handle_t<TenT>& ctx, const TenT& a) {
-    return a.backend.Norm().template item<real_t<TenT>>();
+    return static_cast<real_t<TenT>>(a.backend.norm());
   }
 
   // Normalize
@@ -2127,13 +2127,10 @@ namespace tcapi {
     cytnx::Tensor H_dag = cytnx::linalg::Conj(reshaped).permute({1, 0});
     cytnx::Tensor diff = reshaped + H_dag;
 
-    // Read norm with correct type
     bool is_float
         = (original_dtype == cytnx::Type.Float || original_dtype == cytnx::Type.ComplexFloat);
-    double norm_diff = is_float ? cytnx::linalg::Norm(diff).item<float>()
-                                : cytnx::linalg::Norm(diff).item<double>();
-    double norm_H = is_float ? cytnx::linalg::Norm(reshaped).item<float>()
-                             : cytnx::linalg::Norm(reshaped).item<double>();
+    double norm_diff = static_cast<double>(cytnx::linalg::norm(diff));
+    double norm_H = static_cast<double>(cytnx::linalg::norm(reshaped));
 
     cytnx::Tensor result;
     if (norm_diff < 1e-12 * (norm_H + 1e-14)) {
@@ -2199,13 +2196,10 @@ namespace tcapi {
     cytnx::Tensor H_dag = cytnx::linalg::Conj(reshaped).permute({1, 0});
     cytnx::Tensor diff = reshaped + H_dag;
 
-    // Read norm with correct type
     bool is_float
         = (original_dtype == cytnx::Type.Float || original_dtype == cytnx::Type.ComplexFloat);
-    double norm_diff = is_float ? cytnx::linalg::Norm(diff).item<float>()
-                                : cytnx::linalg::Norm(diff).item<double>();
-    double norm_H = is_float ? cytnx::linalg::Norm(reshaped).item<float>()
-                             : cytnx::linalg::Norm(reshaped).item<double>();
+    double norm_diff = static_cast<double>(cytnx::linalg::norm(diff));
+    double norm_H = static_cast<double>(cytnx::linalg::norm(reshaped));
 
     cytnx::Tensor result;
     if (norm_diff < 1e-12 * (norm_H + 1e-14)) {
