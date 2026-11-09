@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cytnx.hpp>
 #include <functional>
+#include <stdexcept>
 
 // FIXME: Trace operations cause AddressSanitizer container-overflow in Cytnx internal code
 // This appears to be a bug in the Cytnx library itself (UniTensor::UniTensor constructor)
@@ -59,6 +60,51 @@ TEST_CASE("TCAPI Contract - duplicate label validation") {
         = {2, 3};
     CHECK_THROWS_AS(tcapi::contract(ctx, a, bd_labs_a_dup, b, bd_labs_b_single, c, bd_labs_c_out),
                     std::invalid_argument);
+  }
+
+  tcapi::destroy_context(ctx);
+}
+
+TEST_CASE("TCAPI Contract - every bond is contracted or kept") {
+  using Ten = tcapi::CytnxTensor<cytnx::cytnx_double>;
+  using Labels = tcapi::List<tcapi::bond_label_t<Ten>>;
+  tcapi::context_handle_t<Ten> ctx;
+  tcapi::create_context(ctx);
+
+  const char* const label_count = "contract: each operand needs one label per bond";
+  const char* const unaccounted
+      = "contract: every bond of each operand must be contracted or named in the output labels";
+
+  const auto rejects = [&](const tcapi::shape_t<Ten>& shape_a, const auto& labs_a,
+                           const tcapi::shape_t<Ten>& shape_b, const auto& labs_b,
+                           const auto& labs_c, const char* message) {
+    auto a = tcapi::zeros<Ten>(ctx, shape_a);
+    auto b = tcapi::zeros<Ten>(ctx, shape_b);
+    Ten c;
+    CHECK_THROWS_WITH_AS(tcapi::contract<Ten>(ctx, a, labs_a, b, labs_b, c, labs_c), message,
+                         std::invalid_argument);
+  };
+
+  SUBCASE("A label in neither the other operand nor the output") {
+    rejects({2, 2}, "ij", {2}, "j", "", unaccounted);
+    rejects({1, 2}, "ij", {2}, "j", "", unaccounted);
+    rejects({2, 3}, "ij", {3, 4}, "jk", "i", unaccounted);
+  }
+
+  SUBCASE("Outer products into an empty output") {
+    rejects({2}, "i", {2}, "j", "", unaccounted);
+    rejects({}, "", {3}, "j", "", unaccounted);
+  }
+
+  SUBCASE("Fewer labels than bonds") {
+    rejects({2, 2}, "i", {2}, "i", "", label_count);
+    rejects({2, 2}, Labels{7}, {2}, Labels{7}, Labels{}, label_count);
+  }
+
+  SUBCASE("More labels than bonds") {
+    rejects({2}, "ij", {3}, "k", "jk", label_count);
+    rejects({2}, Labels{1, 2}, {3}, Labels{3}, Labels{2, 3}, label_count);
+    rejects({2}, "i", {2}, "ik", "", label_count);
   }
 
   tcapi::destroy_context(ctx);
