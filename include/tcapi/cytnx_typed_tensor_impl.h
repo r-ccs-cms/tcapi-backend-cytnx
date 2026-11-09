@@ -526,7 +526,20 @@ namespace tcapi {
     }
 
     if (treat_as_label_mode) {
+      // NCONAnalysis walks the labels, not the bonds: it skips a label that is
+      // neither contracted nor named in the output, and records an output label
+      // as a free bond even at a position past the operand's order. Either way
+      // a bond would reach the result unaccounted for.
+      if (bd_labs_a.size() != rank_a || bd_labs_b.size() != rank_b) {
+        throw std::invalid_argument("contract: each operand needs one label per bond");
+      }
       detail::NCONAnalysis<TenT> analysis(bd_labs_a, bd_labs_b, bd_labs_c);
+      if (analysis.contract_axes_a.size() + analysis.free_axes_a.size() != rank_a
+          || analysis.contract_axes_b.size() + analysis.free_axes_b.size() != rank_b) {
+        throw std::invalid_argument(
+            "contract: every bond of each operand must be contracted or named in the output "
+            "labels");
+      }
 
       if (analysis.contract_axes_a.empty() && analysis.contract_axes_b.empty()) {
         // Outer product case
