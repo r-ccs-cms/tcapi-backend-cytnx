@@ -43,57 +43,24 @@ namespace tcapi {
       return t.dtype() == dtype ? t : t.astype(dtype);
     }
 
-    // A TCAPI zeroth-order tensor (shape {}, one element) is held as a Cytnx
-    // tensor of shape {}, which Cytnx produces only by reshaping a one-element
-    // tensor: its tensor constructor rejects an empty shape ("Must at least have
-    // one element"), its tensor addition and subtraction build their output
-    // through that constructor and reject one the same way, and its element
-    // printer faults on one. allocate builds one through new_backend; close and
-    // linear_combine view one as shape {1} through as_rank1; show prints its
-    // element itself. Shapes are passed to reshape as cytnx_int64, because
-    // Tensor::reshape's cytnx_uint64 overload indexes element 0 of the vector.
-
-    /// True for a zeroth-order tensor; false for a default-constructed one,
-    /// whose shape is also empty but whose dtype is Void.
-    inline bool is_rank0(const cytnx::Tensor& t) {
-      return t.dtype() != cytnx::Type.Void && t.shape().empty();
-    }
-
-    /// Reshapes a one-element tensor to shape {}.
-    inline void make_rank0_(cytnx::Tensor& t) { t.reshape_(std::vector<cytnx::cytnx_int64>{}); }
-
-    /// A zeroth-order tensor viewed as shape {1}; any other tensor as it is.
-    inline cytnx::Tensor as_rank1(const cytnx::Tensor& t) {
-      return is_rank0(t) ? t.reshape(std::vector<cytnx::cytnx_int64>{1}) : t;
-    }
-
     /// Throws std::invalid_argument when some but not all of `ins` are
-    /// zeroth-order. as_rank1 views a zeroth-order input as shape {1}, which
-    /// Cytnx's addition broadcasts against any other shape, so without this a
-    /// zeroth-order input beside a tensor of another shape would be summed
-    /// instead of rejected. Beside a default-constructed tensor it would fail
-    /// inside Cytnx's addition, with an error that names neither.
+    /// zeroth-order. A TCAPI zeroth-order tensor is a Cytnx rank-0 tensor
+    /// (`is_scalar()`); a default-constructed one also has an empty shape, but
+    /// dtype Void. Cytnx's addition broadcasts a one-element operand, the rank-0
+    /// one included, against any shape, so without this a zeroth-order input
+    /// beside a tensor of another shape would be summed instead of rejected.
+    /// Beside a default-constructed tensor it would fail inside Cytnx's
+    /// addition, with an error that names neither input.
     template <typename TenT>
     void require_rank0_all_or_none(const List<CRef<TenT>>& ins, const char* what) {
-      const bool first = is_rank0(ins[0].get().backend);
+      const bool first = ins[0].get().backend.is_scalar();
       for (const auto& in : ins) {
-        if (is_rank0(in.get().backend) != first) {
+        if (in.get().backend.is_scalar() != first) {
           throw std::invalid_argument(std::string(what)
                                       + ": a zeroth-order input requires every input to be "
                                         "zeroth-order");
         }
       }
-    }
-
-    /// A Cytnx tensor of `shape`, zeroth-order when `shape` is empty.
-    inline cytnx::Tensor new_backend(const std::vector<cytnx::cytnx_uint64>& shape,
-                                     const unsigned int dtype, const int device) {
-      if (shape.empty()) {
-        cytnx::Tensor t(std::vector<cytnx::cytnx_uint64>{1}, dtype, device);
-        make_rank0_(t);
-        return t;
-      }
-      return cytnx::Tensor(shape, dtype, device);
     }
   }  // namespace detail
 
@@ -228,10 +195,7 @@ namespace tcapi {
   }
 
   template <typename TenT> void show(context_handle_t<TenT>& ctx, const TenT& a) {
-    if (detail::is_rank0(a.backend)) {
-      std::cout << "Shape : ()\n" << get_elem(ctx, a, elem_coors_t<TenT>{}) << std::endl;
-      return;
-    }
+    (void)ctx;
     std::cout << a.backend << std::endl;
   }
 
@@ -479,12 +443,6 @@ namespace tcapi {
       axis_map.erase(it1 < it2 ? (it2 - 1) : it1);
     }
 
-    // With every bond paired, Cytnx's Trace leaves shape {1}; TCAPI's result is
-    // zeroth-order.
-    if (axis_map.empty() && !result.shape().empty()) {
-      detail::make_rank0_(result);
-    }
-
     inout.backend = result;
   }
 
@@ -560,9 +518,7 @@ namespace tcapi {
         auto b_flat = flatten(b.backend, true);
         cytnx::Tensor outer_matrix = cytnx::linalg::Matmul(a_flat, b_flat);
 
-        // cytnx_int64, so that an empty target shape (two zeroth-order operands)
-        // takes the reshape overload that does not index element 0.
-        std::vector<cytnx::cytnx_int64> target_shape;
+        std::vector<cytnx::cytnx_uint64> target_shape;
         auto a_shape = a.backend.shape();
         auto b_shape = b.backend.shape();
         target_shape.insert(target_shape.end(), a_shape.begin(), a_shape.end());
@@ -601,11 +557,6 @@ namespace tcapi {
           if (valid_perm.size() == result.shape().size()) {
             result = result.permute(valid_perm);
           }
-        }
-        // TCAPI V1: "Empty gamma yields a scalar", a zeroth-order tensor, where
-        // Tensordot leaves shape {1}.
-        if (bd_labs_c.empty()) {
-          detail::make_rank0_(result);
         }
         c.backend = std::move(result);
       } catch (const std::exception& e) {
@@ -705,12 +656,9 @@ namespace tcapi {
     }
     detail::require_rank0_all_or_none(ins, "linear_combine");
 
-    out.backend = detail::as_rank1(ins[0].get().backend).clone();
+    out.backend = ins[0].get().backend.clone();
     for (size_t i = 1; i < ins.size(); ++i) {
-      out.backend = out.backend + detail::as_rank1(ins[i].get().backend);
-    }
-    if (detail::is_rank0(ins[0].get().backend)) {
-      detail::make_rank0_(out.backend);
+      out.backend = out.backend + ins[i].get().backend;
     }
     return out;
   }
@@ -724,12 +672,9 @@ namespace tcapi {
     }
     detail::require_rank0_all_or_none(ins, "linear_combine");
 
-    out.backend = detail::as_rank1(ins[0].get().backend) * coefs[0];
+    out.backend = ins[0].get().backend * coefs[0];
     for (size_t i = 1; i < ins.size(); ++i) {
-      out.backend = out.backend + detail::as_rank1(ins[i].get().backend) * coefs[i];
-    }
-    if (detail::is_rank0(ins[0].get().backend)) {
-      detail::make_rank0_(out.backend);
+      out.backend = out.backend + ins[i].get().backend * coefs[i];
     }
     return out;
   }
@@ -1420,7 +1365,7 @@ namespace tcapi {
     // taking a maximum first, also makes a NaN difference fail the comparison.
     // The magnitudes are read through a host pointer, so they move to the CPU
     // first, as svd's singular values do.
-    cytnx::Tensor diff = detail::as_rank1(a.backend) - detail::as_rank1(b.backend);
+    cytnx::Tensor diff = a.backend - b.backend;
     cytnx::Tensor magnitude
         = cytnx::linalg::Abs(diff).astype(cytnx::Type.Double).to(cytnx::Device.cpu).contiguous();
     const double eps_magnitude = std::abs(static_cast<double>(epsilon));
@@ -1948,7 +1893,7 @@ namespace tcapi {
       cytnx_shape.push_back(static_cast<cytnx::cytnx_uint64>(dim));
     }
     result.backend
-        = detail::new_backend(cytnx_shape, detail::elem_to_cytnx_type<cytnx::cytnx_double>(), ctx);
+        = cytnx::Tensor(cytnx_shape, detail::elem_to_cytnx_type<cytnx::cytnx_double>(), ctx);
     return result;
   }
 
@@ -1962,7 +1907,7 @@ namespace tcapi {
       cytnx_shape.push_back(static_cast<cytnx::cytnx_uint64>(dim));
     }
     result.backend
-        = detail::new_backend(cytnx_shape, detail::elem_to_cytnx_type<cytnx::cytnx_float>(), ctx);
+        = cytnx::Tensor(cytnx_shape, detail::elem_to_cytnx_type<cytnx::cytnx_float>(), ctx);
     return result;
   }
 
@@ -1976,8 +1921,8 @@ namespace tcapi {
     for (const auto& dim : shape) {
       cytnx_shape.push_back(static_cast<cytnx::cytnx_uint64>(dim));
     }
-    result.backend = detail::new_backend(
-        cytnx_shape, detail::elem_to_cytnx_type<cytnx::cytnx_complex128>(), ctx);
+    result.backend
+        = cytnx::Tensor(cytnx_shape, detail::elem_to_cytnx_type<cytnx::cytnx_complex128>(), ctx);
     return result;
   }
 
@@ -1991,8 +1936,8 @@ namespace tcapi {
     for (const auto& dim : shape) {
       cytnx_shape.push_back(static_cast<cytnx::cytnx_uint64>(dim));
     }
-    result.backend = detail::new_backend(cytnx_shape,
-                                         detail::elem_to_cytnx_type<cytnx::cytnx_complex64>(), ctx);
+    result.backend
+        = cytnx::Tensor(cytnx_shape, detail::elem_to_cytnx_type<cytnx::cytnx_complex64>(), ctx);
     return result;
   }
 
