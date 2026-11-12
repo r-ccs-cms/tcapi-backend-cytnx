@@ -2,6 +2,8 @@
 #include <tcapi/tcapi.h>
 
 #include <cytnx.hpp>
+#include <functional>
+#include <stdexcept>
 
 TEST_CASE("TCAPI Context Management") {
   tcapi::context_handle_t<tcapi::CytnxTensor<cytnx::cytnx_complex128>> ctx;
@@ -72,4 +74,31 @@ TEST_CASE("TCAPI GPU Tensor Operations") {
   }
 
   tcapi::destroy_context(ctx);
+}
+
+TEST_CASE("TCAPI linear_combine - inputs on different devices") {
+  if (cytnx::Device.Ngpus == 0) {
+    MESSAGE("Skipping GPU tests - no CUDA devices available");
+    return;
+  }
+
+  using Ten = tcapi::CytnxTensor<cytnx::cytnx_double>;
+  tcapi::context_handle_t<Ten> cpu_ctx;
+  tcapi::context_handle_t<Ten> gpu_ctx;
+  tcapi::create_context(cpu_ctx);
+  tcapi::create_context(gpu_ctx, 0);  // GPU 0
+
+  // Zeroth-order inputs: Cytnx's in-place addition accepts a one-element CPU right
+  // operand beside a GPU left operand, so only the device check rejects that order.
+  auto on_cpu = tcapi::zeros<Ten>(cpu_ctx, {});
+  auto on_gpu = tcapi::zeros<Ten>(gpu_ctx, {});
+  const tcapi::List<tcapi::CRef<Ten>> gpu_first = {std::cref(on_gpu), std::cref(on_cpu)};
+  const tcapi::List<tcapi::CRef<Ten>> cpu_first = {std::cref(on_cpu), std::cref(on_gpu)};
+  for (const auto* ins : {&gpu_first, &cpu_first}) {
+    CHECK_THROWS_AS(tcapi::linear_combine<Ten>(gpu_ctx, *ins), std::invalid_argument);
+    CHECK_THROWS_AS(tcapi::linear_combine<Ten>(gpu_ctx, *ins, {1.0, 1.0}), std::invalid_argument);
+  }
+
+  tcapi::destroy_context(gpu_ctx);
+  tcapi::destroy_context(cpu_ctx);
 }

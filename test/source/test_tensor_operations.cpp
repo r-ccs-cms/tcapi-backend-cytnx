@@ -154,8 +154,11 @@ TEST_CASE("TCAPI linear_combine - zeroth-order inputs") {
 // of different shapes are rejected rather than broadcast. They also pin the
 // rejection of a coefficient count other than the input count and of a
 // default-constructed input.
-TEST_CASE("TCAPI linear_combine - accumulation into an owned buffer") {
-  using Ten = tcapi::CytnxTensor<cytnx::cytnx_double>;
+TEST_CASE_TEMPLATE("TCAPI linear_combine - accumulation into an owned buffer", Ten,
+                   tcapi::CytnxTensor<cytnx::cytnx_float>, tcapi::CytnxTensor<cytnx::cytnx_double>,
+                   tcapi::CytnxTensor<cytnx::cytnx_complex64>,
+                   tcapi::CytnxTensor<cytnx::cytnx_complex128>) {
+  using Elem = tcapi::elem_t<Ten>;
   using Coor = tcapi::elem_coor_t<Ten>;
   using Coors = tcapi::elem_coors_t<Ten>;
   using Coefs = std::vector<tcapi::elem_t<Ten>>;
@@ -191,8 +194,9 @@ TEST_CASE("TCAPI linear_combine - accumulation into an owned buffer") {
   // Every element of the {2, 3} tensor `t` equals expected(i, j).
   const auto check_elems = [&](const Ten& t, auto expected) {
     REQUIRE(tcapi::shape(ctx, t) == tcapi::shape_t<Ten>{2, 3});
-    each_coor(
-        [&](Coor i, Coor j) { CHECK(tcapi::get_elem(ctx, t, Coors{i, j}) == expected(i, j)); });
+    each_coor([&](Coor i, Coor j) {
+      CHECK(tcapi::get_elem(ctx, t, Coors{i, j}) == Elem(expected(i, j)));
+    });
   };
   const auto check_ramp = [&](const Ten& t, double base) { check_elems(t, ramp_at(base)); };
   // `result` shares storage with none of `inputs`.

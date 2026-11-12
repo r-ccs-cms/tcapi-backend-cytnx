@@ -82,6 +82,22 @@ namespace tcapi {
       }
     }
 
+    /// Throws std::invalid_argument when some input of `ins` is on a device
+    /// other than the first input's. Cytnx's in-place addition accepts a
+    /// one-element right operand on the CPU beside a left operand on another
+    /// device, so without this such inputs would be summed in one order and
+    /// rejected in the other.
+    template <typename TenT>
+    void require_same_device(const List<CRef<TenT>>& ins, const char* what) {
+      const int device = ins[0].get().backend.device();
+      for (size_t i = 1; i < ins.size(); ++i) {
+        if (ins[i].get().backend.device() != device) {
+          throw std::invalid_argument(std::string(what) + ": input " + std::to_string(i)
+                                      + " is on a device other than input 0's");
+        }
+      }
+    }
+
     /// A contiguous copy of `t` that shares no storage with `t`. Cytnx's
     /// contiguous() returns `t` itself when `t` is already contiguous, and
     /// keeps the storage of a zero-size non-contiguous `t`; both are cloned.
@@ -682,6 +698,7 @@ namespace tcapi {
     }
     detail::require_initialized(ins, "linear_combine");
     detail::require_same_shape(ins, "linear_combine");
+    detail::require_same_device(ins, "linear_combine");
 
     if (ins.size() == 1) {
       out.backend = ins[0].get().backend.clone();
@@ -707,14 +724,20 @@ namespace tcapi {
     }
     detail::require_initialized(ins, "linear_combine");
     detail::require_same_shape(ins, "linear_combine");
+    detail::require_same_device(ins, "linear_combine");
 
-    // The product is a fresh tensor, but keeps the layout of a non-contiguous ins[0].
-    out.backend = ins[0].get().backend * coefs[0];
+    const cytnx::Tensor& first = ins[0].get().backend;
+    // The product is a fresh tensor, but keeps the layout of a non-contiguous first input.
     if (ins.size() == 1) {
+      out.backend = first * coefs[0];
       return out;
     }
-    if (!out.backend.is_contiguous()) {
-      out.backend.contiguous_();
+    // Accumulate into one contiguous buffer that shares no storage with any input.
+    if (first.is_contiguous()) {
+      out.backend = first * coefs[0];
+    } else {
+      out.backend = detail::contiguous_copy(first);
+      out.backend *= coefs[0];
     }
     for (size_t i = 1; i < ins.size(); ++i) {
       out.backend += ins[i].get().backend * coefs[i];
