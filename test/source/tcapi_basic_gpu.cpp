@@ -3,6 +3,7 @@
 
 #include <cytnx.hpp>
 #include <functional>
+#include <initializer_list>
 #include <stdexcept>
 #include <vector>
 
