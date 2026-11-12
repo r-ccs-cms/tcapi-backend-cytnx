@@ -43,20 +43,16 @@ namespace tcapi {
       return t.dtype() == dtype ? t : t.astype(dtype);
     }
 
-    /// Throws std::invalid_argument when some but not all of `ins` are
-    /// zeroth-order. A TCAPI zeroth-order tensor is a Cytnx rank-0 tensor
-    /// (`is_scalar()`); a default-constructed one also has an empty shape, but
-    /// dtype Void, so require_same_shape cannot tell the two apart. Beside a
-    /// default-constructed tensor, a zeroth-order input would fail inside
-    /// Cytnx's arithmetic, with an error that names neither input.
+    /// Throws std::invalid_argument when some input of `ins` is a
+    /// default-constructed tensor, which holds no elements (Cytnx dtype Void).
+    /// Its shape is empty, like a zeroth-order tensor's, so require_same_shape
+    /// cannot tell it from one.
     template <typename TenT>
-    void require_rank0_all_or_none(const List<CRef<TenT>>& ins, const char* what) {
-      const bool first = ins[0].get().backend.is_scalar();
-      for (const auto& in : ins) {
-        if (in.get().backend.is_scalar() != first) {
-          throw std::invalid_argument(std::string(what)
-                                      + ": a zeroth-order input requires every input to be "
-                                        "zeroth-order");
+    void require_initialized(const List<CRef<TenT>>& ins, const char* what) {
+      for (size_t i = 0; i < ins.size(); ++i) {
+        if (ins[i].get().backend.is_void()) {
+          throw std::invalid_argument(std::string(what) + ": input " + std::to_string(i)
+                                      + " is a default-constructed tensor");
         }
       }
     }
@@ -67,10 +63,21 @@ namespace tcapi {
     /// one-element input after the first would be summed instead of rejected.
     template <typename TenT>
     void require_same_shape(const List<CRef<TenT>>& ins, const char* what) {
+      const auto shape_text = [](const std::vector<cytnx::cytnx_uint64>& shape) {
+        std::string text = "{";
+        for (size_t b = 0; b < shape.size(); ++b) {
+          text += (b == 0 ? "" : ", ") + std::to_string(shape[b]);
+        }
+        return text + "}";
+      };
       const auto& shape = ins[0].get().backend.shape();
-      for (const auto& in : ins) {
-        if (in.get().backend.shape() != shape) {
-          throw std::invalid_argument(std::string(what) + ": every input must have the same shape");
+      for (size_t i = 1; i < ins.size(); ++i) {
+        const auto& other = ins[i].get().backend.shape();
+        if (other != shape) {
+          throw std::invalid_argument(std::string(what) + ": input " + std::to_string(i)
+                                      + " has shape " + shape_text(other)
+                                      + ", but input 0 has shape " + shape_text(shape)
+                                      + "; every input must have the same shape");
         }
       }
     }
@@ -673,7 +680,7 @@ namespace tcapi {
     if (ins.empty()) {
       return out;
     }
-    detail::require_rank0_all_or_none(ins, "linear_combine");
+    detail::require_initialized(ins, "linear_combine");
     detail::require_same_shape(ins, "linear_combine");
 
     if (ins.size() == 1) {
@@ -698,7 +705,7 @@ namespace tcapi {
     if (ins.empty()) {
       return out;
     }
-    detail::require_rank0_all_or_none(ins, "linear_combine");
+    detail::require_initialized(ins, "linear_combine");
     detail::require_same_shape(ins, "linear_combine");
 
     // The product is a fresh tensor, but keeps the layout of a non-contiguous ins[0].

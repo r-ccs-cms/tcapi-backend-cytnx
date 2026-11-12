@@ -132,7 +132,7 @@ TEST_CASE("TCAPI linear_combine - zeroth-order inputs") {
     CHECK(tcapi::get_elem(ctx, weighted, {}) == Elem(0.0, 1.0) * Elem(2.0, -1.0) + Elem(1.0, 6.0));
   }
 
-  SUBCASE("A zeroth-order input beside another shape is rejected") {
+  SUBCASE("A zeroth-order input beside another shape or a default-constructed tensor is rejected") {
     auto one = tcapi::fill<Ten>(ctx, {1}, Elem(2.0, -1.0));
     auto three = tcapi::fill<Ten>(ctx, {3}, Elem(1.0));
     Ten empty;
@@ -151,7 +151,9 @@ TEST_CASE("TCAPI linear_combine - zeroth-order inputs") {
 // linear_combine accumulates into one buffer it owns. These cases pin what that
 // must not change: no input is written, the result shares storage with none of
 // them, a multi-input result is contiguous whatever ins[0]'s layout, and inputs
-// of different shapes are rejected rather than broadcast.
+// of different shapes are rejected rather than broadcast. They also pin the
+// rejection of a coefficient count other than the input count and of a
+// default-constructed input.
 TEST_CASE("TCAPI linear_combine - accumulation into an owned buffer") {
   using Ten = tcapi::CytnxTensor<cytnx::cytnx_double>;
   using Coor = tcapi::elem_coor_t<Ten>;
@@ -196,6 +198,12 @@ TEST_CASE("TCAPI linear_combine - accumulation into an owned buffer") {
   // `result` shares storage with none of `inputs`.
   const auto check_unshared = [](const Ten& result, std::initializer_list<const Ten*> inputs) {
     for (const Ten* in : inputs) CHECK_FALSE(result.backend.same_data(in->backend));
+  };
+  // Both overloads reject `ins`, the weighted one given one coefficient per input.
+  const auto rejects_inputs = [&](const tcapi::List<tcapi::CRef<Ten>>& ins) {
+    CHECK_THROWS_AS(tcapi::linear_combine<Ten>(ctx, ins), std::invalid_argument);
+    CHECK_THROWS_AS(tcapi::linear_combine<Ten>(ctx, ins, Coefs(ins.size(), 1.0)),
+                    std::invalid_argument);
   };
   // A multi-input result: unshared, and contiguous.
   const auto check_owned = [&](const Ten& result, std::initializer_list<const Ten*> inputs) {
@@ -299,16 +307,8 @@ TEST_CASE("TCAPI linear_combine - accumulation into an owned buffer") {
         = [&](const tcapi::shape_t<Ten>& shape_x, const tcapi::shape_t<Ten>& shape_y) {
             auto x = tcapi::zeros<Ten>(ctx, shape_x);
             auto y = tcapi::zeros<Ten>(ctx, shape_y);
-            CHECK_THROWS_AS(tcapi::linear_combine<Ten>(ctx, {std::cref(x), std::cref(y)}),
-                            std::invalid_argument);
-            CHECK_THROWS_AS(tcapi::linear_combine<Ten>(ctx, {std::cref(y), std::cref(x)}),
-                            std::invalid_argument);
-            CHECK_THROWS_AS(
-                tcapi::linear_combine<Ten>(ctx, {std::cref(x), std::cref(y)}, Coefs{1.0, 1.0}),
-                std::invalid_argument);
-            CHECK_THROWS_AS(
-                tcapi::linear_combine<Ten>(ctx, {std::cref(y), std::cref(x)}, Coefs{1.0, 1.0}),
-                std::invalid_argument);
+            rejects_inputs({std::cref(x), std::cref(y)});
+            rejects_inputs({std::cref(y), std::cref(x)});
           };
     // A one-element input beside another shape; Cytnx's in-place addition broadcasts a one-element
     // right operand.
@@ -319,6 +319,15 @@ TEST_CASE("TCAPI linear_combine - accumulation into an owned buffer") {
     // The same element count, and a different rank.
     rejects({2, 3}, {3, 2});
     rejects({2, 3}, {6});
+
+    // The message names the input that differs and both shapes.
+    auto x = tcapi::zeros<Ten>(ctx, {2, 3});
+    auto y = tcapi::zeros<Ten>(ctx, {3, 2});
+    CHECK_THROWS_WITH_AS(
+        tcapi::linear_combine<Ten>(ctx, {std::cref(x), std::cref(x), std::cref(y)}),
+        "linear_combine: input 2 has shape {3, 2}, but input 0 has shape {2, 3}; every input "
+        "must have the same shape",
+        std::invalid_argument);
   }
 
   SUBCASE("A coefficient count other than the input count is rejected") {
@@ -338,15 +347,15 @@ TEST_CASE("TCAPI linear_combine - accumulation into an owned buffer") {
     Ten v;
     Ten w;
     auto a = ramp(1.0);
-    // Two default-constructed tensors pass both checks; Cytnx's arithmetic rejects them.
-    CHECK_THROWS_AS(tcapi::linear_combine<Ten>(ctx, {std::cref(v), std::cref(w)}), cytnx::error);
-    CHECK_THROWS_AS(tcapi::linear_combine<Ten>(ctx, {std::cref(v), std::cref(w)}, Coefs{1.0, 1.0}),
-                    cytnx::error);
-    // Beside a tensor of another shape, the shape check rejects them first.
-    CHECK_THROWS_AS(tcapi::linear_combine<Ten>(ctx, {std::cref(v), std::cref(a)}),
-                    std::invalid_argument);
-    CHECK_THROWS_AS(tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(v)}, Coefs{1.0, 1.0}),
-                    std::invalid_argument);
+    // A default-constructed input is rejected wherever it appears, alone included.
+    rejects_inputs({std::cref(v)});
+    rejects_inputs({std::cref(v), std::cref(w)});
+    rejects_inputs({std::cref(v), std::cref(a)});
+    rejects_inputs({std::cref(a), std::cref(v)});
+    // The message names the input.
+    CHECK_THROWS_WITH_AS(tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(v)}),
+                         "linear_combine: input 1 is a default-constructed tensor",
+                         std::invalid_argument);
   }
 
   tcapi::destroy_context(ctx);
