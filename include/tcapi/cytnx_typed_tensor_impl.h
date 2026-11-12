@@ -43,6 +43,13 @@ namespace tcapi {
       return t.dtype() == dtype ? t : t.astype(dtype);
     }
 
+    /// The error a check on the inputs of `what` throws for input `i`.
+    inline std::invalid_argument input_error(const char* what, size_t i,
+                                             const std::string& problem) {
+      return std::invalid_argument(std::string(what) + ": input " + std::to_string(i) + " "
+                                   + problem);
+    }
+
     /// Throws std::invalid_argument when some input of `ins` is a
     /// default-constructed tensor, which holds no elements (Cytnx dtype Void).
     /// Its shape is empty, like a zeroth-order tensor's, so require_same_shape
@@ -51,8 +58,7 @@ namespace tcapi {
     void require_initialized(const List<CRef<TenT>>& ins, const char* what) {
       for (size_t i = 0; i < ins.size(); ++i) {
         if (ins[i].get().backend.is_void()) {
-          throw std::invalid_argument(std::string(what) + ": input " + std::to_string(i)
-                                      + " is a default-constructed tensor");
+          throw input_error(what, i, "is a default-constructed tensor");
         }
       }
     }
@@ -74,10 +80,9 @@ namespace tcapi {
       for (size_t i = 1; i < ins.size(); ++i) {
         const auto& other = ins[i].get().backend.shape();
         if (other != shape) {
-          throw std::invalid_argument(std::string(what) + ": input " + std::to_string(i)
-                                      + " has shape " + shape_text(other)
-                                      + ", but input 0 has shape " + shape_text(shape)
-                                      + "; every input must have the same shape");
+          throw input_error(what, i,
+                            "has shape " + shape_text(other) + ", but input 0 has shape "
+                                + shape_text(shape) + "; every input must have the same shape");
         }
       }
     }
@@ -92,8 +97,7 @@ namespace tcapi {
       const int device = ins[0].get().backend.device();
       for (size_t i = 1; i < ins.size(); ++i) {
         if (ins[i].get().backend.device() != device) {
-          throw std::invalid_argument(std::string(what) + ": input " + std::to_string(i)
-                                      + " is on a device other than input 0's");
+          throw input_error(what, i, "is on a device other than input 0's");
         }
       }
     }
@@ -726,14 +730,10 @@ namespace tcapi {
     detail::require_same_shape(ins, "linear_combine");
     detail::require_same_device(ins, "linear_combine");
 
+    // The product is a fresh tensor but keeps a non-contiguous first input's layout, so with
+    // later terms to accumulate, a contiguous copy of that input is scaled in place instead.
     const cytnx::Tensor& first = ins[0].get().backend;
-    // The product is a fresh tensor, but keeps the layout of a non-contiguous first input.
-    if (ins.size() == 1) {
-      out.backend = first * coefs[0];
-      return out;
-    }
-    // Accumulate into one contiguous buffer that shares no storage with any input.
-    if (first.is_contiguous()) {
+    if (ins.size() == 1 || first.is_contiguous()) {
       out.backend = first * coefs[0];
     } else {
       out.backend = detail::contiguous_copy(first);
