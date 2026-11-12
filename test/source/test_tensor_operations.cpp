@@ -340,8 +340,8 @@ TEST_CASE_TEMPLATE("TCAPI linear_combine - accumulation into an owned buffer", T
   SUBCASE("A coefficient count other than the input count is rejected") {
     auto a = ramp(1.0);
     auto b = ramp(10.0);
-    CHECK_THROWS_AS(tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(b)}, Coefs{1.0}),
-                    std::invalid_argument);
+    CHECK_THROWS_WITH_AS(tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(b)}, Coefs{1.0}),
+                         "linear_combine: needs one coefficient per input", std::invalid_argument);
     CHECK_THROWS_AS(
         tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(b)}, Coefs{1.0, 1.0, 1.0}),
         std::invalid_argument);

@@ -69,6 +69,9 @@ namespace tcapi {
     /// shapes would be summed instead of rejected.
     template <typename TenT>
     void require_same_shape(const List<CRef<TenT>>& ins, const char* what) {
+      if (ins.empty()) {
+        return;
+      }
       const auto shape_text = [](const std::vector<cytnx::cytnx_uint64>& shape) {
         std::string text = "{";
         for (size_t b = 0; b < shape.size(); ++b) {
@@ -94,6 +97,9 @@ namespace tcapi {
     /// at others.
     template <typename TenT>
     void require_same_device(const List<CRef<TenT>>& ins, const char* what) {
+      if (ins.empty()) {
+        return;
+      }
       const int device = ins[0].get().backend.device();
       for (size_t i = 1; i < ins.size(); ++i) {
         if (ins[i].get().backend.device() != device) {
@@ -709,8 +715,8 @@ namespace tcapi {
       return out;
     }
     // Accumulate into one buffer that shares no storage with any input. The result's layout is
-    // unspecified, but `+=` into a non-contiguous tensor takes Cytnx's per-element path, so the
-    // buffer starts contiguous: as the fresh sum of the first two inputs when the first is
+    // unspecified, but `+=` takes Cytnx's per-element path unless both operands are contiguous,
+    // so the buffer starts contiguous: as the fresh sum of the first two inputs when the first is
     // contiguous, which saves a pass over memory, and as a copy of the first otherwise.
     const cytnx::Tensor& first = ins[0].get().backend;
     size_t next = 1;
@@ -743,8 +749,8 @@ namespace tcapi {
     // Accumulate into the first term, a fresh product that shares no storage with any input.
     // The product promotes to the wider of the coefficient's and the input's dtypes, where
     // scaling in place would keep the input's or throw. It keeps a non-contiguous first input's
-    // layout. The result's layout is unspecified, but `+=` into a non-contiguous tensor takes
-    // Cytnx's per-element path, so with later terms the product is made contiguous first.
+    // layout. The result's layout is unspecified, but `+=` takes Cytnx's per-element path unless
+    // both operands are contiguous, so with later terms the product is made contiguous first.
     out.backend = ins[0].get().backend * coefs[0];
     if (ins.size() > 1) {
       out.backend.contiguous_();

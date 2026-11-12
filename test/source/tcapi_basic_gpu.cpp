@@ -112,6 +112,10 @@ TEST_CASE("TCAPI linear_combine - inputs on different devices") {
     CHECK_THROWS_AS(tcapi::linear_combine<Ten>(gpu_ctx, *ins), std::invalid_argument);
     CHECK_THROWS_AS(tcapi::linear_combine<Ten>(gpu_ctx, *ins, {1.0, 1.0}), std::invalid_argument);
   }
+  // The message names the input on the other device.
+  CHECK_THROWS_WITH_AS(tcapi::linear_combine<Ten>(gpu_ctx, gpu_first),
+                       "linear_combine: input 1 is on a device other than input 0's",
+                       std::invalid_argument);
 
   tcapi::destroy_context(gpu_ctx);
   tcapi::destroy_context(cpu_ctx);
