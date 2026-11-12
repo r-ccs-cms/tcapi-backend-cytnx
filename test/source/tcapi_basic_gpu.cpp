@@ -95,8 +95,8 @@ TEST_CASE("TCAPI linear_combine - inputs on different devices") {
   tcapi::create_context(cpu_ctx);
   tcapi::create_context(gpu_ctx, 0);  // GPU 0
 
-  // Zeroth-order inputs: Cytnx's in-place addition accepts a one-element CPU right
-  // operand beside a GPU left operand, so only the device check rejects that order.
+  // Zeroth-order inputs: some of Cytnx's additions accept a one-element CPU operand
+  // beside a GPU tensor, so without the device check some orders would be summed.
   auto on_cpu = tcapi::zeros<Ten>(cpu_ctx, {});
   auto on_gpu = tcapi::zeros<Ten>(gpu_ctx, {});
   const tcapi::List<tcapi::CRef<Ten>> gpu_first = {std::cref(on_gpu), std::cref(on_cpu)};

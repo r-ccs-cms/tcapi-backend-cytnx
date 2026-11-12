@@ -64,9 +64,9 @@ namespace tcapi {
     }
 
     /// Throws std::invalid_argument when some input of `ins` has a shape other
-    /// than the first input's. Cytnx's in-place addition broadcasts a
-    /// one-element right operand against any shape, so without this a
-    /// one-element input after the first would be summed instead of rejected.
+    /// than the first input's. Cytnx's addition broadcasts a one-element
+    /// operand against any shape, so without this some inputs of different
+    /// shapes would be summed instead of rejected.
     template <typename TenT>
     void require_same_shape(const List<CRef<TenT>>& ins, const char* what) {
       const auto shape_text = [](const std::vector<cytnx::cytnx_uint64>& shape) {
@@ -88,10 +88,10 @@ namespace tcapi {
     }
 
     /// Throws std::invalid_argument when some input of `ins` is on a device
-    /// other than the first input's. Cytnx's in-place addition accepts a
-    /// one-element right operand on the CPU beside a left operand on another
-    /// device, so without this such inputs would be summed in one order and
-    /// rejected in the other.
+    /// other than the first input's. Some of Cytnx's additions accept a
+    /// one-element operand on the CPU beside a tensor on another device, so
+    /// without this such inputs would be summed at some positions and rejected
+    /// at others.
     template <typename TenT>
     void require_same_device(const List<CRef<TenT>>& ins, const char* what) {
       const int device = ins[0].get().backend.device();
@@ -708,9 +708,19 @@ namespace tcapi {
       out.backend = ins[0].get().backend.clone();
       return out;
     }
-    // Accumulate into one contiguous buffer that shares no storage with any input.
-    out.backend = detail::contiguous_copy(ins[0].get().backend);
-    for (size_t i = 1; i < ins.size(); ++i) {
+    // Accumulate into one buffer that shares no storage with any input. The result's layout is
+    // unspecified, but `+=` into a non-contiguous tensor takes Cytnx's per-element path, so the
+    // buffer starts contiguous: as the fresh sum of the first two inputs when the first is
+    // contiguous, which saves a pass over memory, and as a copy of the first otherwise.
+    const cytnx::Tensor& first = ins[0].get().backend;
+    size_t next = 1;
+    if (first.is_contiguous()) {
+      out.backend = first + ins[1].get().backend;
+      next = 2;
+    } else {
+      out.backend = detail::contiguous_copy(first);
+    }
+    for (size_t i = next; i < ins.size(); ++i) {
       out.backend += ins[i].get().backend;
     }
     return out;

@@ -314,8 +314,7 @@ TEST_CASE_TEMPLATE("TCAPI linear_combine - accumulation into an owned buffer", T
             rejects_inputs({std::cref(x), std::cref(y)});
             rejects_inputs({std::cref(y), std::cref(x)});
           };
-    // A one-element input beside another shape; Cytnx's in-place addition broadcasts a one-element
-    // right operand.
+    // A one-element input beside another shape; Cytnx's addition broadcasts a one-element operand.
     rejects({1}, {3});
     rejects({1}, {1, 1});
     rejects({1, 1}, {2, 3});
