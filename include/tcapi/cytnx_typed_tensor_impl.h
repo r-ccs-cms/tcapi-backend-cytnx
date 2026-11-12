@@ -46,11 +46,9 @@ namespace tcapi {
     /// Throws std::invalid_argument when some but not all of `ins` are
     /// zeroth-order. A TCAPI zeroth-order tensor is a Cytnx rank-0 tensor
     /// (`is_scalar()`); a default-constructed one also has an empty shape, but
-    /// dtype Void. Cytnx's addition broadcasts a one-element operand, the rank-0
-    /// one included, against any shape, so without this a zeroth-order input
-    /// beside a tensor of another shape would be summed instead of rejected.
-    /// Beside a default-constructed tensor it would fail inside Cytnx's
-    /// arithmetic, with an error that names neither input.
+    /// dtype Void, so require_same_shape cannot tell the two apart. Beside a
+    /// default-constructed tensor, a zeroth-order input would fail inside
+    /// Cytnx's arithmetic, with an error that names neither input.
     template <typename TenT>
     void require_rank0_all_or_none(const List<CRef<TenT>>& ins, const char* what) {
       const bool first = ins[0].get().backend.is_scalar();
@@ -61,6 +59,28 @@ namespace tcapi {
                                         "zeroth-order");
         }
       }
+    }
+
+    /// Throws std::invalid_argument when some input of `ins` has a shape other
+    /// than the first input's. Cytnx's addition broadcasts a one-element right
+    /// operand against any shape, so without this a one-element input beside
+    /// a tensor of another shape would be summed instead of rejected.
+    template <typename TenT>
+    void require_same_shape(const List<CRef<TenT>>& ins, const char* what) {
+      const auto& shape = ins[0].get().backend.shape();
+      for (const auto& in : ins) {
+        if (in.get().backend.shape() != shape) {
+          throw std::invalid_argument(std::string(what) + ": every input must have the same shape");
+        }
+      }
+    }
+
+    /// A contiguous copy of `t` that shares no storage with `t`. Cytnx's
+    /// contiguous() returns `t` itself when `t` is already contiguous, and
+    /// keeps the storage of a zero-size non-contiguous `t`; both are cloned.
+    inline cytnx::Tensor contiguous_copy(const cytnx::Tensor& t) {
+      cytnx::Tensor out = t.contiguous();
+      return out.same_data(t) ? out.clone() : out;
     }
   }  // namespace detail
 
@@ -654,10 +674,16 @@ namespace tcapi {
       return out;
     }
     detail::require_rank0_all_or_none(ins, "linear_combine");
+    detail::require_same_shape(ins, "linear_combine");
 
-    out.backend = ins[0].get().backend.clone();
+    if (ins.size() == 1) {
+      out.backend = ins[0].get().backend.clone();
+      return out;
+    }
+    // Accumulate into one contiguous buffer that shares no storage with any input.
+    out.backend = detail::contiguous_copy(ins[0].get().backend);
     for (size_t i = 1; i < ins.size(); ++i) {
-      out.backend = out.backend + ins[i].get().backend;
+      out.backend += ins[i].get().backend;
     }
     return out;
   }
@@ -666,14 +692,25 @@ namespace tcapi {
                                                const List<CRef<TenT>>& ins,
                                                const std::vector<elem_t<TenT>>& coefs) {
     TenT out;
-    if (ins.empty() || ins.size() != coefs.size()) {
+    if (ins.size() != coefs.size()) {
+      throw std::invalid_argument("linear_combine: needs one coefficient per input");
+    }
+    if (ins.empty()) {
       return out;
     }
     detail::require_rank0_all_or_none(ins, "linear_combine");
+    detail::require_same_shape(ins, "linear_combine");
 
+    // The product is a fresh tensor, but keeps the layout of a non-contiguous ins[0].
     out.backend = ins[0].get().backend * coefs[0];
+    if (ins.size() == 1) {
+      return out;
+    }
+    if (!out.backend.is_contiguous()) {
+      out.backend.contiguous_();
+    }
     for (size_t i = 1; i < ins.size(); ++i) {
-      out.backend = out.backend + ins[i].get().backend * coefs[i];
+      out.backend += ins[i].get().backend * coefs[i];
     }
     return out;
   }

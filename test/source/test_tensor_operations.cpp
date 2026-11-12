@@ -5,6 +5,7 @@
 #include <cytnx.hpp>
 #include <functional>
 #include <stdexcept>
+#include <vector>
 
 // FIXME: Trace operations cause AddressSanitizer container-overflow in Cytnx internal code
 // This appears to be a bug in the Cytnx library itself (UniTensor::UniTensor constructor)
@@ -141,6 +142,192 @@ TEST_CASE("TCAPI linear_combine - zeroth-order inputs") {
     CHECK_THROWS_AS(
         tcapi::linear_combine<Ten>(ctx, {std::cref(s), std::cref(empty)}, {Elem(1.0), Elem(1.0)}),
         std::invalid_argument);
+  }
+
+  tcapi::destroy_context(ctx);
+}
+
+// linear_combine accumulates into one buffer it owns. These cases pin what that
+// must not change: no input is written, the result shares storage with none of
+// them, a multi-input result is contiguous whatever ins[0]'s layout, and inputs
+// of different shapes are rejected rather than broadcast.
+TEST_CASE("TCAPI linear_combine - accumulation into an owned buffer") {
+  using Ten = tcapi::CytnxTensor<cytnx::cytnx_double>;
+  using Coor = tcapi::elem_coor_t<Ten>;
+  using Coors = tcapi::elem_coors_t<Ten>;
+  using Coefs = std::vector<tcapi::elem_t<Ten>>;
+  tcapi::context_handle_t<Ten> ctx;
+  tcapi::create_context(ctx);
+
+  // Element (i, j) of a {2, 3} input built from `base`.
+  const auto ramp_value = [](double base, Coor i, Coor j) { return base + 3.0 * i + j; };
+  // A contiguous {2, 3} tensor holding ramp_value(base, i, j).
+  const auto ramp = [&](double base) {
+    auto t = tcapi::zeros<Ten>(ctx, {2, 3});
+    for (Coor i = 0; i < 2; ++i) {
+      for (Coor j = 0; j < 3; ++j) tcapi::set_elem(ctx, t, Coors{i, j}, ramp_value(base, i, j));
+    }
+    return t;
+  };
+  // The same values, as a transpose of a {3, 2} tensor, so the backend is non-contiguous.
+  const auto transposed_ramp = [&](double base) {
+    auto t = tcapi::zeros<Ten>(ctx, {3, 2});
+    for (Coor i = 0; i < 2; ++i) {
+      for (Coor j = 0; j < 3; ++j) tcapi::set_elem(ctx, t, Coors{j, i}, ramp_value(base, i, j));
+    }
+    tcapi::transpose(ctx, t, {1, 0});
+    return t;
+  };
+  // Every element of the {2, 3} tensor `t` equals expected(i, j).
+  const auto check_elems = [&](const Ten& t, auto expected) {
+    REQUIRE(tcapi::shape(ctx, t) == tcapi::shape_t<Ten>{2, 3});
+    for (Coor i = 0; i < 2; ++i) {
+      for (Coor j = 0; j < 3; ++j) {
+        CHECK(tcapi::get_elem(ctx, t, Coors{i, j}) == expected(i, j));
+      }
+    }
+  };
+  const auto check_ramp = [&](const Ten& t, double base) {
+    check_elems(t, [&](Coor i, Coor j) { return ramp_value(base, i, j); });
+  };
+
+  SUBCASE("Repeated and distinct contiguous inputs") {
+    auto a = ramp(1.0);
+    auto b = ramp(10.0);
+    const auto av = [&](Coor i, Coor j) { return ramp_value(1.0, i, j); };
+    const auto bv = [&](Coor i, Coor j) { return ramp_value(10.0, i, j); };
+
+    auto one = tcapi::linear_combine<Ten>(ctx, {std::cref(a)});
+    check_elems(one, av);
+    auto pair = tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(b)});
+    check_elems(pair, [&](Coor i, Coor j) { return av(i, j) + bv(i, j); });
+    auto triple = tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(a), std::cref(a)});
+    check_elems(triple, [&](Coor i, Coor j) { return 3.0 * av(i, j); });
+    auto mixed = tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(b), std::cref(a)});
+    check_elems(mixed, [&](Coor i, Coor j) { return 2.0 * av(i, j) + bv(i, j); });
+    auto scaled = tcapi::linear_combine<Ten>(ctx, {std::cref(a)}, Coefs{0.5});
+    check_elems(scaled, [&](Coor i, Coor j) { return 0.5 * av(i, j); });
+    auto weighted = tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(b), std::cref(a)},
+                                               Coefs{0.5, -2.0, 0.25});
+    check_elems(weighted, [&](Coor i, Coor j) { return 0.75 * av(i, j) - 2.0 * bv(i, j); });
+
+    for (const Ten* result : {&one, &pair, &triple, &mixed, &scaled, &weighted}) {
+      CHECK_FALSE(result->backend.same_data(a.backend));
+      CHECK_FALSE(result->backend.same_data(b.backend));
+    }
+    // Writing to a result leaves the inputs as they were.
+    tcapi::set_elem(ctx, triple, Coors{0, 0}, -100.0);
+    check_ramp(a, 1.0);
+    check_ramp(b, 10.0);
+  }
+
+  SUBCASE("A transposed first input") {
+    auto p = transposed_ramp(1.0);
+    auto b = ramp(10.0);
+    REQUIRE_FALSE(p.backend.is_contiguous());
+    const auto pv = [&](Coor i, Coor j) { return ramp_value(1.0, i, j); };
+    const auto bv = [&](Coor i, Coor j) { return ramp_value(10.0, i, j); };
+
+    auto pair = tcapi::linear_combine<Ten>(ctx, {std::cref(p), std::cref(b)});
+    check_elems(pair, [&](Coor i, Coor j) { return pv(i, j) + bv(i, j); });
+    CHECK(pair.backend.is_contiguous());
+    auto triple = tcapi::linear_combine<Ten>(ctx, {std::cref(p), std::cref(b), std::cref(p)});
+    check_elems(triple, [&](Coor i, Coor j) { return 2.0 * pv(i, j) + bv(i, j); });
+    CHECK(triple.backend.is_contiguous());
+    auto weighted = tcapi::linear_combine<Ten>(ctx, {std::cref(p), std::cref(b)}, Coefs{0.5, 2.0});
+    check_elems(weighted, [&](Coor i, Coor j) { return 0.5 * pv(i, j) + 2.0 * bv(i, j); });
+    CHECK(weighted.backend.is_contiguous());
+    auto weighted_triple = tcapi::linear_combine<Ten>(
+        ctx, {std::cref(p), std::cref(b), std::cref(p)}, Coefs{0.5, 2.0, -1.0});
+    check_elems(weighted_triple, [&](Coor i, Coor j) { return -0.5 * pv(i, j) + 2.0 * bv(i, j); });
+    CHECK(weighted_triple.backend.is_contiguous());
+
+    auto one = tcapi::linear_combine<Ten>(ctx, {std::cref(p)});
+    check_elems(one, pv);
+    auto scaled = tcapi::linear_combine<Ten>(ctx, {std::cref(p)}, Coefs{2.0});
+    check_elems(scaled, [&](Coor i, Coor j) { return 2.0 * pv(i, j); });
+
+    check_ramp(p, 1.0);
+    check_ramp(b, 10.0);
+  }
+
+  SUBCASE("A transposed later input") {
+    auto a = ramp(1.0);
+    auto q = transposed_ramp(10.0);
+    REQUIRE_FALSE(q.backend.is_contiguous());
+    const auto av = [&](Coor i, Coor j) { return ramp_value(1.0, i, j); };
+    const auto qv = [&](Coor i, Coor j) { return ramp_value(10.0, i, j); };
+
+    auto pair = tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(q)});
+    check_elems(pair, [&](Coor i, Coor j) { return av(i, j) + qv(i, j); });
+    auto weighted = tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(q)}, Coefs{-1.0, 0.5});
+    check_elems(weighted, [&](Coor i, Coor j) { return -av(i, j) + 0.5 * qv(i, j); });
+
+    check_ramp(a, 1.0);
+    check_ramp(q, 10.0);
+  }
+
+  SUBCASE("A zero-size transposed first input") {
+    auto z = tcapi::zeros<Ten>(ctx, {0, 3});
+    tcapi::transpose(ctx, z, {1, 0});
+    REQUIRE_FALSE(z.backend.is_contiguous());
+    auto sum = tcapi::linear_combine<Ten>(ctx, {std::cref(z), std::cref(z)});
+    CHECK(tcapi::shape(ctx, sum) == tcapi::shape_t<Ten>{3, 0});
+    CHECK_FALSE(sum.backend.same_data(z.backend));
+  }
+
+  SUBCASE("Inputs of different shapes are rejected, in either order") {
+    const auto rejects
+        = [&](const tcapi::shape_t<Ten>& shape_x, const tcapi::shape_t<Ten>& shape_y) {
+            auto x = tcapi::zeros<Ten>(ctx, shape_x);
+            auto y = tcapi::zeros<Ten>(ctx, shape_y);
+            CHECK_THROWS_AS(tcapi::linear_combine<Ten>(ctx, {std::cref(x), std::cref(y)}),
+                            std::invalid_argument);
+            CHECK_THROWS_AS(tcapi::linear_combine<Ten>(ctx, {std::cref(y), std::cref(x)}),
+                            std::invalid_argument);
+            CHECK_THROWS_AS(
+                tcapi::linear_combine<Ten>(ctx, {std::cref(x), std::cref(y)}, Coefs{1.0, 1.0}),
+                std::invalid_argument);
+            CHECK_THROWS_AS(
+                tcapi::linear_combine<Ten>(ctx, {std::cref(y), std::cref(x)}, Coefs{1.0, 1.0}),
+                std::invalid_argument);
+          };
+    // A one-element input beside another shape, which Cytnx's addition would broadcast.
+    rejects({1}, {3});
+    rejects({1}, {1, 1});
+    rejects({1, 1}, {2, 3});
+    rejects({1}, {0});
+    // The same element count, and a different rank.
+    rejects({2, 3}, {3, 2});
+    rejects({2, 3}, {6});
+  }
+
+  SUBCASE("A coefficient count other than the input count is rejected") {
+    auto a = ramp(1.0);
+    auto b = ramp(10.0);
+    CHECK_THROWS_AS(tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(b)}, Coefs{1.0}),
+                    std::invalid_argument);
+    CHECK_THROWS_AS(
+        tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(b)}, Coefs{1.0, 1.0, 1.0}),
+        std::invalid_argument);
+    CHECK_THROWS_AS(tcapi::linear_combine<Ten>(ctx, {}, Coefs{1.0}), std::invalid_argument);
+    // No inputs and no coefficients still give a default-constructed tensor.
+    CHECK(tcapi::linear_combine<Ten>(ctx, {}, Coefs{}).backend.is_void());
+  }
+
+  SUBCASE("Default-constructed inputs") {
+    Ten v;
+    Ten w;
+    auto a = ramp(1.0);
+    // Two default-constructed tensors pass both checks; Cytnx's addition rejects them.
+    CHECK_THROWS_AS(tcapi::linear_combine<Ten>(ctx, {std::cref(v), std::cref(w)}), cytnx::error);
+    CHECK_THROWS_AS(tcapi::linear_combine<Ten>(ctx, {std::cref(v), std::cref(w)}, Coefs{1.0, 1.0}),
+                    cytnx::error);
+    // Beside a tensor of another shape, the shape check rejects them first.
+    CHECK_THROWS_AS(tcapi::linear_combine<Ten>(ctx, {std::cref(v), std::cref(a)}),
+                    std::invalid_argument);
+    CHECK_THROWS_AS(tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(v)}, Coefs{1.0, 1.0}),
+                    std::invalid_argument);
   }
 
   tcapi::destroy_context(ctx);
