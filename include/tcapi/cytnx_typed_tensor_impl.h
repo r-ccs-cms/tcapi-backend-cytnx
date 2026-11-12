@@ -62,9 +62,9 @@ namespace tcapi {
     }
 
     /// Throws std::invalid_argument when some input of `ins` has a shape other
-    /// than the first input's. Cytnx's addition broadcasts a one-element right
-    /// operand against any shape, so without this a one-element input beside
-    /// a tensor of another shape would be summed instead of rejected.
+    /// than the first input's. Cytnx's in-place addition broadcasts a
+    /// one-element right operand against any shape, so without this a
+    /// one-element input after the first would be summed instead of rejected.
     template <typename TenT>
     void require_same_shape(const List<CRef<TenT>>& ins, const char* what) {
       const auto& shape = ins[0].get().backend.shape();
