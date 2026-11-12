@@ -730,14 +730,14 @@ namespace tcapi {
     detail::require_same_shape(ins, "linear_combine");
     detail::require_same_device(ins, "linear_combine");
 
-    // The product is a fresh tensor but keeps a non-contiguous first input's layout, so with
-    // later terms to accumulate, a contiguous copy of that input is scaled in place instead.
-    const cytnx::Tensor& first = ins[0].get().backend;
-    if (ins.size() == 1 || first.is_contiguous()) {
-      out.backend = first * coefs[0];
-    } else {
-      out.backend = detail::contiguous_copy(first);
-      out.backend *= coefs[0];
+    // Accumulate into the first term, a fresh product that shares no storage with any input.
+    // The product promotes to the wider of the coefficient's and the input's dtypes, where
+    // scaling in place would keep the input's or throw. It keeps a non-contiguous first input's
+    // layout. The result's layout is unspecified, but `+=` into a non-contiguous tensor takes
+    // Cytnx's per-element path, so with later terms the product is made contiguous first.
+    out.backend = ins[0].get().backend * coefs[0];
+    if (ins.size() > 1) {
+      out.backend.contiguous_();
     }
     for (size_t i = 1; i < ins.size(); ++i) {
       out.backend += ins[i].get().backend * coefs[i];
