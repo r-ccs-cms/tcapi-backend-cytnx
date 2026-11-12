@@ -150,10 +150,10 @@ TEST_CASE("TCAPI linear_combine - zeroth-order inputs") {
 
 // linear_combine accumulates into one buffer it owns. These cases pin what that
 // must not change: no input is written, the result shares storage with none of
-// them, a multi-input result is contiguous whatever ins[0]'s layout, and inputs
-// of different shapes are rejected rather than broadcast. They also pin the
-// rejection of a coefficient count other than the input count and of a
-// default-constructed input.
+// them, and inputs of different shapes are rejected rather than broadcast. They
+// also pin the rejection of a coefficient count other than the input count and
+// of a default-constructed input. The result's layout is unspecified, so no case
+// checks it.
 TEST_CASE_TEMPLATE("TCAPI linear_combine - accumulation into an owned buffer", Ten,
                    tcapi::CytnxTensor<cytnx::cytnx_float>, tcapi::CytnxTensor<cytnx::cytnx_double>,
                    tcapi::CytnxTensor<cytnx::cytnx_complex64>,
@@ -209,11 +209,6 @@ TEST_CASE_TEMPLATE("TCAPI linear_combine - accumulation into an owned buffer", T
     CHECK_THROWS_AS(tcapi::linear_combine<Ten>(ctx, ins, Coefs(ins.size(), 1.0)),
                     std::invalid_argument);
   };
-  // A multi-input result: unshared, and contiguous.
-  const auto check_owned = [&](const Ten& result, std::initializer_list<const Ten*> inputs) {
-    check_unshared(result, inputs);
-    CHECK(result.backend.is_contiguous());
-  };
 
   SUBCASE("Repeated and distinct contiguous inputs") {
     auto a = ramp(1.0);
@@ -237,7 +232,9 @@ TEST_CASE_TEMPLATE("TCAPI linear_combine - accumulation into an owned buffer", T
 
     check_unshared(one, {&a});
     check_unshared(scaled, {&a});
-    for (const Ten* result : {&pair, &triple, &mixed, &weighted}) check_owned(*result, {&a, &b});
+    for (const Ten* result : {&pair, &triple, &mixed, &weighted}) {
+      check_unshared(*result, {&a, &b});
+    }
     // Writing to a result leaves the inputs as they were.
     tcapi::set_elem(ctx, triple, Coors{0, 0}, -100.0);
     check_ramp(a, 1.0);
@@ -253,17 +250,17 @@ TEST_CASE_TEMPLATE("TCAPI linear_combine - accumulation into an owned buffer", T
 
     auto pair = tcapi::linear_combine<Ten>(ctx, {std::cref(p), std::cref(b)});
     check_elems(pair, [&](Coor i, Coor j) { return pv(i, j) + bv(i, j); });
-    check_owned(pair, {&p, &b});
+    check_unshared(pair, {&p, &b});
     auto triple = tcapi::linear_combine<Ten>(ctx, {std::cref(p), std::cref(b), std::cref(p)});
     check_elems(triple, [&](Coor i, Coor j) { return 2.0 * pv(i, j) + bv(i, j); });
-    check_owned(triple, {&p, &b});
+    check_unshared(triple, {&p, &b});
     auto weighted = tcapi::linear_combine<Ten>(ctx, {std::cref(p), std::cref(b)}, Coefs{0.5, 2.0});
     check_elems(weighted, [&](Coor i, Coor j) { return 0.5 * pv(i, j) + 2.0 * bv(i, j); });
-    check_owned(weighted, {&p, &b});
+    check_unshared(weighted, {&p, &b});
     auto weighted_triple = tcapi::linear_combine<Ten>(
         ctx, {std::cref(p), std::cref(b), std::cref(p)}, Coefs{0.5, 2.0, -1.0});
     check_elems(weighted_triple, [&](Coor i, Coor j) { return -0.5 * pv(i, j) + 2.0 * bv(i, j); });
-    check_owned(weighted_triple, {&p, &b});
+    check_unshared(weighted_triple, {&p, &b});
 
     auto one = tcapi::linear_combine<Ten>(ctx, {std::cref(p)});
     check_elems(one, pv);
@@ -287,23 +284,30 @@ TEST_CASE_TEMPLATE("TCAPI linear_combine - accumulation into an owned buffer", T
     check_elems(pair, [&](Coor i, Coor j) { return av(i, j) + qv(i, j); });
     auto weighted = tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(q)}, Coefs{-1.0, 0.5});
     check_elems(weighted, [&](Coor i, Coor j) { return -av(i, j) + 0.5 * qv(i, j); });
-    check_owned(pair, {&a, &q});
-    check_owned(weighted, {&a, &q});
+    check_unshared(pair, {&a, &q});
+    check_unshared(weighted, {&a, &q});
 
     check_ramp(a, 1.0);
     check_ramp(q, 10.0);
   }
 
-  SUBCASE("A zero-size transposed first input") {
+  SUBCASE("Zero-size inputs, contiguous and transposed") {
+    // Both overloads on {z, z} give `shape` and share no storage with z.
+    const auto check_zero_size = [&](const Ten& z, const tcapi::shape_t<Ten>& shape) {
+      auto sum = tcapi::linear_combine<Ten>(ctx, {std::cref(z), std::cref(z)});
+      CHECK(tcapi::shape(ctx, sum) == shape);
+      check_unshared(sum, {&z});
+      auto weighted
+          = tcapi::linear_combine<Ten>(ctx, {std::cref(z), std::cref(z)}, Coefs{1.0, 2.0});
+      CHECK(tcapi::shape(ctx, weighted) == shape);
+      check_unshared(weighted, {&z});
+    };
     auto z = tcapi::zeros<Ten>(ctx, {0, 3});
+    check_zero_size(z, {0, 3});
+    // Cytnx's contiguous() keeps the storage of a zero-size non-contiguous tensor.
     tcapi::transpose(ctx, z, {1, 0});
     REQUIRE_FALSE(z.backend.is_contiguous());
-    auto sum = tcapi::linear_combine<Ten>(ctx, {std::cref(z), std::cref(z)});
-    CHECK(tcapi::shape(ctx, sum) == tcapi::shape_t<Ten>{3, 0});
-    check_owned(sum, {&z});
-    auto weighted = tcapi::linear_combine<Ten>(ctx, {std::cref(z), std::cref(z)}, Coefs{1.0, 2.0});
-    CHECK(tcapi::shape(ctx, weighted) == tcapi::shape_t<Ten>{3, 0});
-    check_owned(weighted, {&z});
+    check_zero_size(z, {3, 0});
   }
 
   SUBCASE("Inputs of different shapes are rejected, in either order") {
@@ -342,8 +346,9 @@ TEST_CASE_TEMPLATE("TCAPI linear_combine - accumulation into an owned buffer", T
         tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(b)}, Coefs{1.0, 1.0, 1.0}),
         std::invalid_argument);
     CHECK_THROWS_AS(tcapi::linear_combine<Ten>(ctx, {}, Coefs{1.0}), std::invalid_argument);
-    // No inputs and no coefficients still give a default-constructed tensor.
+    // No inputs, with no coefficients or none at all, still give a default-constructed tensor.
     CHECK(tcapi::linear_combine<Ten>(ctx, {}, Coefs{}).backend.is_void());
+    CHECK(tcapi::linear_combine<Ten>(ctx, {}).backend.is_void());
   }
 
   SUBCASE("Default-constructed inputs") {
