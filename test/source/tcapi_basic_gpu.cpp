@@ -90,9 +90,10 @@ TEST_CASE("TCAPI linear_combine - inputs on different devices") {
   if (skip_without_gpu()) return;
 
   using Ten = tcapi::CytnxTensor<cytnx::cytnx_double>;
+  // A default-constructed handle targets the CPU; create_context without a GPU id would pick
+  // GPU 0 here, because this test runs only where a GPU exists.
   tcapi::context_handle_t<Ten> cpu_ctx;
   tcapi::context_handle_t<Ten> gpu_ctx;
-  tcapi::create_context(cpu_ctx);
   tcapi::create_context(gpu_ctx, 0);  // GPU 0
 
   // Zeroth-order inputs: some of Cytnx's additions accept a one-element CPU operand
@@ -108,6 +109,8 @@ TEST_CASE("TCAPI linear_combine - inputs on different devices") {
       = {std::cref(matrix_on_gpu), std::cref(matrix_on_cpu)};
   const tcapi::List<tcapi::CRef<Ten>> matrix_cpu_first
       = {std::cref(matrix_on_cpu), std::cref(matrix_on_gpu)};
+  for (const Ten* t : {&on_cpu, &matrix_on_cpu}) REQUIRE(t->backend.device() == cytnx::Device.cpu);
+  for (const Ten* t : {&on_gpu, &matrix_on_gpu}) REQUIRE(t->backend.device() == cytnx::Device.cuda);
   for (const auto* ins : {&gpu_first, &cpu_first, &matrix_gpu_first, &matrix_cpu_first}) {
     CHECK_THROWS_AS(tcapi::linear_combine<Ten>(gpu_ctx, *ins), std::invalid_argument);
     CHECK_THROWS_AS(tcapi::linear_combine<Ten>(gpu_ctx, *ins, {1.0, 1.0}), std::invalid_argument);
@@ -118,7 +121,6 @@ TEST_CASE("TCAPI linear_combine - inputs on different devices") {
                        std::invalid_argument);
 
   tcapi::destroy_context(gpu_ctx);
-  tcapi::destroy_context(cpu_ctx);
 }
 
 TEST_CASE("TCAPI linear_combine - accumulation on a GPU") {
