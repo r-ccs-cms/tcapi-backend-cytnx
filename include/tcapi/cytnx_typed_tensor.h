@@ -3,6 +3,7 @@
 #include <cytnx.hpp>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace tcapi {
 
@@ -10,8 +11,13 @@ namespace tcapi {
 
     /// True when `t` holds the dtype `ElemT` maps to, or is default-constructed (dtype Void).
     /// The CytnxTensor constructor and tcapi::load both apply this rule.
-    template <typename ElemT> bool backend_dtype_matches(const cytnx::Tensor& t) {
+    template <typename ElemT> bool backend_dtype_is_valid(const cytnx::Tensor& t) {
       return t.is_void() || t.dtype() == cytnx::Type_class::cy_typeid_v<ElemT>;
+    }
+
+    /// Cytnx's name for the dtype `ElemT` maps to, for error messages.
+    template <typename ElemT> std::string dtype_name() {
+      return cytnx::Type.getname(cytnx::Type_class::cy_typeid_v<ElemT>);
     }
 
   }  // namespace detail
@@ -24,6 +30,8 @@ namespace tcapi {
    * This wrapper enables compile-time type safety for Cytnx tensors, which are
    * dynamically typed at runtime. It provides a TenT type that can be used with
    * tcapi::tensor_traits, similar to other statically-typed tensor backends.
+   * At runtime, `backend` must hold the dtype `ElemT` maps to or be default-constructed; see
+   * `backend`.
    *
    * Usage:
    * @code
@@ -51,10 +59,10 @@ namespace tcapi {
     /// Construct from existing cytnx::Tensor. Throws std::invalid_argument when `t` is neither of
     /// the dtype `ElemT` maps to nor default-constructed.
     explicit CytnxTensor(cytnx::Tensor t) : backend(std::move(t)) {
-      if (!detail::backend_dtype_matches<ElemT>(backend)) {
-        throw std::invalid_argument(
-            "tcapi::CytnxTensor<" + cytnx::Type.getname(cytnx::Type_class::cy_typeid_v<ElemT>)
-            + "> cannot hold a cytnx::Tensor of dtype " + cytnx::Type.getname(backend.dtype()));
+      if (!detail::backend_dtype_is_valid<ElemT>(backend)) {
+        throw std::invalid_argument("tcapi::CytnxTensor<" + detail::dtype_name<ElemT>()
+                                    + "> cannot hold a cytnx::Tensor of dtype "
+                                    + cytnx::Type.getname(backend.dtype()));
       }
     }
 

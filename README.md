@@ -164,7 +164,7 @@ int main() {
 ```
 
 - `CytnxTensor<ElemT>` fixes the element type at compile time, so `tcapi::elem_t<Tensor>` resolves to `ElemT` and supports direct arithmetic.
-- The wrapper exposes the underlying Cytnx tensor via `Tensor::backend` when lower-level Cytnx APIs are required. `backend` holds the dtype `ElemT` maps to, or is default-constructed, and TCAPI functions assume this. Constructing a `CytnxTensor<ElemT>` from a `cytnx::Tensor` of another dtype throws `std::invalid_argument`. Cytnx operations on `backend` can change its dtype without error, for example in-place `+=` with a complex operand or assigning the result of `.real()`, so code that writes to it must keep the dtype.
+- The wrapper exposes the underlying Cytnx tensor via `Tensor::backend` when lower-level Cytnx APIs are required. `backend` holds the dtype `ElemT` maps to, or is default-constructed, and TCAPI functions assume this. Constructing a `CytnxTensor<ElemT>` from a `cytnx::Tensor` of another dtype throws `std::invalid_argument`. Cytnx operations on `backend` can change its dtype without error, for example in-place `+=` with a complex tensor operand or assigning the result of `.real()`, so code that writes to it must keep the dtype.
 
 ### Compiling User Code (C++17)
 

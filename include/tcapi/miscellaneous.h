@@ -100,7 +100,8 @@ namespace tcapi {
   bool close(context_handle_t<TenT>& ctx, const TenT& a, const TenT& b, const real_t<TenT> epsilon);
 
   /**
-   * @brief Convert tensor between different types
+   * @brief Convert tensor between different types. Casting complex elements to a real element
+   * type throws; use tcapi::real or tcapi::imag instead.
    *
    * @tparam Ten1T First tensor type
    * @tparam Ten2T Second tensor type

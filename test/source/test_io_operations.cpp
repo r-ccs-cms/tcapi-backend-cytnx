@@ -4,6 +4,11 @@
 #include <cmath>
 #include <cytnx.hpp>
 #include <filesystem>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+
+#include "sample_tensor.h"
 
 TEST_CASE("tcapi::save file creation verification") {
   tcapi::context_handle_t<tcapi::CytnxTensor<cytnx::cytnx_complex128>> ctx;
@@ -52,18 +57,13 @@ TEST_CASE("tcapi::save rejects a default-constructed tensor") {
     const auto path
         = (std::filesystem::temp_directory_path() / "tcapi_test_save_default_constructed.cytn")
               .string();
-    Tensor original;
-    tcapi::allocate(ctx, {2}, original);
-    tcapi::set_elem(ctx, original, {0}, 1.5);
-    tcapi::set_elem(ctx, original, {1}, -2.5);
-    tcapi::save(ctx, original, path);
+    tcapi::save(ctx, make_sample<Tensor>(ctx), path);
 
     CHECK_THROWS_WITH_AS(tcapi::save(ctx, empty, path), doctest::Contains("default-constructed"),
                          std::runtime_error);
 
     const Tensor loaded = tcapi::load<Tensor>(ctx, path);
-    CHECK(tcapi::get_elem(ctx, loaded, {0}) == 1.5);
-    CHECK(tcapi::get_elem(ctx, loaded, {1}) == -2.5);
+    check_real_sample(ctx, loaded);
     std::filesystem::remove(path);
   }
 

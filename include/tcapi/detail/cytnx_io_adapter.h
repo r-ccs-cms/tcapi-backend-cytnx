@@ -146,11 +146,11 @@ namespace tcapi::detail {
     // `source` names where the tensor was read from, for the message.
     template <typename ElemT>
     void require_loaded_dtype(const cytnx::Tensor& loaded, const std::string& source) {
-      if (!backend_dtype_matches<ElemT>(loaded)) {
+      if (!backend_dtype_is_valid<ElemT>(loaded)) {
         throw std::runtime_error(
             "tcapi::load: " + source + " holds a tensor of dtype "
             + cytnx::Type.getname(loaded.dtype()) + ", which a CytnxTensor<"
-            + cytnx::Type.getname(cytnx::Type_class::cy_typeid_v<ElemT>)
+            + dtype_name<ElemT>()
             + "> cannot hold; load it as the element type it was saved with, then use "
               "tcapi::convert, or tcapi::real for a complex tensor wanted as real");
       }

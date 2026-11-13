@@ -3,11 +3,16 @@
 #include <complex>
 #include <cytnx.hpp>
 #include <filesystem>
+#include <fstream>
+#include <initializer_list>
 #include <limits>
+#include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
 
 #include "diagonal_check.h"
+#include "sample_tensor.h"
 #include "tcapi/miscellaneous.h"
 #include "tcapi/tcapi.h"
 #include "tcapi/tensor_linear_algebra.h"
@@ -257,6 +262,30 @@ TEST_CASE("CytnxTensor - Construction") {
   }
 }
 
+namespace {
+
+  // Runs `f` and returns the message of the E it throws, or an empty string
+  // when it throws none.
+  template <typename E, typename F> std::string thrown_message(F&& f) {
+    try {
+      f();
+    } catch (const E& e) {
+      return e.what();
+    }
+    return {};
+  }
+
+  // Checks that `message` contains each of `parts`.
+  void check_contains(const std::string& message, std::initializer_list<std::string> parts) {
+    CAPTURE(message);
+    for (const auto& part : parts) {
+      CAPTURE(part);
+      CHECK(message.find(part) != std::string::npos);
+    }
+  }
+
+}  // namespace
+
 // A CytnxTensor<T> holds the dtype T maps to, or is default-constructed; the
 // constructor rejects every other dtype and names both in its message.
 TEST_CASE_TEMPLATE("CytnxTensor - construction checks the backend dtype", Tensor,
@@ -270,14 +299,9 @@ TEST_CASE_TEMPLATE("CytnxTensor - construction checks the backend dtype", Tensor
       continue;
     }
     CAPTURE(cytnx::Type.getname(dtype));
-    std::string message;
-    try {
-      Tensor t(cytnx::zeros({2}, dtype));
-    } catch (const std::invalid_argument& e) {
-      message = e.what();
-    }
-    CHECK(message.find(cytnx::Type.getname(own)) != std::string::npos);
-    CHECK(message.find(cytnx::Type.getname(dtype)) != std::string::npos);
+    const std::string message
+        = thrown_message<std::invalid_argument>([&] { Tensor t(cytnx::zeros({2}, dtype)); });
+    check_contains(message, {cytnx::Type.getname(own), cytnx::Type.getname(dtype)});
   }
 
   Tensor matching(cytnx::zeros({2}, own));
@@ -958,10 +982,7 @@ TEST_CASE("CytnxTensor - I/O Operations") {
     // view below ends before its buffer does.
     const std::string buffer = "test_cytnx_tensor_save_load_view.cytn.not_this_one";
     const std::string_view path = std::string_view(buffer).substr(0, buffer.find(".not"));
-    Tensor original;
-    tcapi::allocate(ctx, {2}, original);
-    tcapi::set_elem(ctx, original, {0}, 1.5);
-    tcapi::set_elem(ctx, original, {1}, -2.5);
+    const Tensor original = make_sample<Tensor>(ctx);
 
     // Each save starts without the file, so a save that writes nothing fails.
     auto check_saved = [&](auto&& save_storage) {
@@ -969,8 +990,7 @@ TEST_CASE("CytnxTensor - I/O Operations") {
       tcapi::save(ctx, original, std::forward<decltype(save_storage)>(save_storage));
       CHECK(std::filesystem::exists(std::string(path)));
       Tensor loaded = tcapi::load<Tensor>(ctx, path);
-      CHECK(tcapi::get_elem(ctx, loaded, {0}) == 1.5);
-      CHECK(tcapi::get_elem(ctx, loaded, {1}) == -2.5);
+      check_real_sample(ctx, loaded);
     };
     check_saved(path);
     check_saved(std::string_view(path));
@@ -982,22 +1002,13 @@ TEST_CASE("CytnxTensor - I/O Operations") {
 
 namespace {
 
-  // Saves a two-element tensor of element type From holding 1.5 and -2.5 + 0.5i
-  // (the imaginary part dropped for a real type) to `path`, which ends in
-  // .cytn so that load finds the file Cytnx writes.
+  // Saves make_sample's tensor of type From to `path`. The path needs an
+  // extension: Cytnx's Save appends .cytn to a path without one, so load would
+  // not find the file.
   template <typename From> void save_sample(const std::string& path) {
-    using Elem = tcapi::elem_t<From>;
     tcapi::context_handle_t<From> ctx;
     tcapi::create_context(ctx);
-    From t;
-    tcapi::allocate(ctx, {2}, t);
-    tcapi::set_elem(ctx, t, {0}, Elem(1.5));
-    if constexpr (std::is_floating_point_v<Elem>) {
-      tcapi::set_elem(ctx, t, {1}, Elem(-2.5));
-    } else {
-      tcapi::set_elem(ctx, t, {1}, Elem(-2.5, 0.5));
-    }
-    tcapi::save(ctx, t, path);
+    tcapi::save(ctx, make_sample<From>(ctx), path);
     tcapi::destroy_context(ctx);
   }
 
@@ -1007,31 +1018,16 @@ namespace {
     save_sample<From>(path);
     tcapi::context_handle_t<To> ctx;
     tcapi::create_context(ctx);
-    std::string message;
-    try {
-      (void)tcapi::load<To>(ctx, path);
-    } catch (const std::runtime_error& e) {
-      message = e.what();
-    }
+    std::string message
+        = thrown_message<std::runtime_error>([&] { (void)tcapi::load<To>(ctx, path); });
     const auto from_name = cytnx::Type.getname(cytnx::Type_class::cy_typeid_v<tcapi::elem_t<From>>);
     const auto to_name = cytnx::Type.getname(cytnx::Type_class::cy_typeid_v<tcapi::elem_t<To>>);
-    CAPTURE(message);
-    CHECK(message.find(path) != std::string::npos);
-    CHECK(message.find(from_name) != std::string::npos);
-    CHECK(message.find(to_name) != std::string::npos);
-    CHECK(message.find("tcapi::convert") != std::string::npos);
-    CHECK(message.find("tcapi::real") != std::string::npos);
+    check_contains(message, {path, from_name, to_name, "tcapi::convert", "tcapi::real"});
 
     // The same file read from a stream is rejected the same way.
-    message.clear();
     std::ifstream in(path, std::ios::binary);
-    try {
-      (void)tcapi::load<To>(ctx, in);
-    } catch (const std::runtime_error& e) {
-      message = e.what();
-    }
-    CHECK(message.find(from_name) != std::string::npos);
-    CHECK(message.find(to_name) != std::string::npos);
+    message = thrown_message<std::runtime_error>([&] { (void)tcapi::load<To>(ctx, in); });
+    check_contains(message, {"the stream", from_name, to_name});
 
     tcapi::destroy_context(ctx);
     std::filesystem::remove(path);
@@ -1049,8 +1045,19 @@ TEST_CASE("CytnxTensor - load rejects a file saved from another element type") {
   SUBCASE("double to float") { check_cross_type_load_throws<D, F>(); }
   SUBCASE("float to double") { check_cross_type_load_throws<F, D>(); }
 
-  // The remedy the message names: load the saved type, then convert.
+  // Loading the saved type succeeds, and the remedies the message names,
+  // tcapi::convert and tcapi::real, take the loaded tensor from there.
   const std::string path = "test_cytnx_tensor_load_then_convert.cytn";
+
+  SUBCASE("the saved type, from a stream") {
+    save_sample<D>(path);
+    tcapi::context_handle_t<D> dctx;
+    tcapi::create_context(dctx);
+    std::ifstream in(path, std::ios::binary);
+    const D loaded = tcapi::load<D>(dctx, in);
+    check_real_sample(dctx, loaded);
+    tcapi::destroy_context(dctx);
+  }
 
   SUBCASE("double, then convert to complex128") {
     save_sample<D>(path);
@@ -1076,8 +1083,7 @@ TEST_CASE("CytnxTensor - load rejects a file saved from another element type") {
     const F loaded = tcapi::load<F>(fctx, path);
     D converted;
     tcapi::convert(fctx, loaded, dctx, converted);
-    CHECK(tcapi::get_elem(dctx, converted, {0}) == 1.5);
-    CHECK(tcapi::get_elem(dctx, converted, {1}) == -2.5);
+    check_real_sample(dctx, converted);
     tcapi::destroy_context(dctx);
     tcapi::destroy_context(fctx);
   }
@@ -1090,8 +1096,12 @@ TEST_CASE("CytnxTensor - load rejects a file saved from another element type") {
     const D re = tcapi::real(zctx, loaded);
     tcapi::context_handle_t<D> dctx;
     tcapi::create_context(dctx);
-    CHECK(tcapi::get_elem(dctx, re, {0}) == 1.5);
-    CHECK(tcapi::get_elem(dctx, re, {1}) == -2.5);
+    check_real_sample(dctx, re);
+
+    // convert is not the remedy here: it throws when it casts complex
+    // elements to real.
+    D converted;
+    CHECK_THROWS(tcapi::convert(zctx, loaded, dctx, converted));
     tcapi::destroy_context(dctx);
     tcapi::destroy_context(zctx);
   }
