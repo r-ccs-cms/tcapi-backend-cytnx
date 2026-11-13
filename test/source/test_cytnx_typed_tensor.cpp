@@ -294,7 +294,7 @@ TEST_CASE_TEMPLATE("CytnxTensor - construction checks the backend dtype", Tensor
                    tcapi::CytnxTensor<cytnx::cytnx_complex128>) {
   const unsigned int own = cytnx::Type_class::cy_typeid_v<typename Tensor::elem_type>;
 
-  for (unsigned int dtype = 0; dtype < cytnx::N_Type; ++dtype) {
+  for (unsigned int dtype = 0; dtype < static_cast<unsigned int>(cytnx::N_Type); ++dtype) {
     if (dtype == cytnx::Type.Void || dtype == own) {
       continue;
     }
@@ -1002,22 +1002,21 @@ TEST_CASE("CytnxTensor - I/O Operations") {
 
 namespace {
 
+  // Every CytnxTensor<T> shares this context type, so one context serves the
+  // tests below for all element types.
+  using Ctx = tcapi::context_handle_t<tcapi::CytnxTensor<cytnx::cytnx_double>>;
+
   // Saves make_sample's tensor of type From to `path`. The path needs an
   // extension: Cytnx's Save appends .cytn to a path without one, so load would
   // not find the file.
-  template <typename From> void save_sample(const std::string& path) {
-    tcapi::context_handle_t<From> ctx;
-    tcapi::create_context(ctx);
+  template <typename From> void save_sample(Ctx& ctx, const std::string& path) {
     tcapi::save(ctx, make_sample<From>(ctx), path);
-    tcapi::destroy_context(ctx);
   }
 
   // Loading a file saved from From as To throws std::runtime_error naming both dtypes.
-  template <typename From, typename To> void check_cross_type_load_throws() {
+  template <typename From, typename To> void check_cross_type_load_throws(Ctx& ctx) {
     const std::string path = "test_cytnx_tensor_cross_type_load.cytn";
-    save_sample<From>(path);
-    tcapi::context_handle_t<To> ctx;
-    tcapi::create_context(ctx);
+    save_sample<From>(ctx, path);
     std::string message
         = thrown_message<std::runtime_error>([&] { (void)tcapi::load<To>(ctx, path); });
     const auto from_name = cytnx::Type.getname(cytnx::Type_class::cy_typeid_v<tcapi::elem_t<From>>);
@@ -1025,11 +1024,12 @@ namespace {
     check_contains(message, {path, from_name, to_name, "tcapi::convert", "tcapi::real"});
 
     // The same file read from a stream is rejected the same way.
-    std::ifstream in(path, std::ios::binary);
-    message = thrown_message<std::runtime_error>([&] { (void)tcapi::load<To>(ctx, in); });
+    // The stream closes before the file is removed, which Windows requires.
+    {
+      std::ifstream in(path, std::ios::binary);
+      message = thrown_message<std::runtime_error>([&] { (void)tcapi::load<To>(ctx, in); });
+    }
     check_contains(message, {"the stream", from_name, to_name});
-
-    tcapi::destroy_context(ctx);
     std::filesystem::remove(path);
   }
 
@@ -1039,74 +1039,82 @@ TEST_CASE("CytnxTensor - load rejects a file saved from another element type") {
   using F = tcapi::CytnxTensor<cytnx::cytnx_float>;
   using D = tcapi::CytnxTensor<cytnx::cytnx_double>;
   using Z = tcapi::CytnxTensor<cytnx::cytnx_complex128>;
+  Ctx ctx;
+  tcapi::create_context(ctx);
 
-  SUBCASE("double to complex128") { check_cross_type_load_throws<D, Z>(); }
-  SUBCASE("complex128 to double") { check_cross_type_load_throws<Z, D>(); }
-  SUBCASE("double to float") { check_cross_type_load_throws<D, F>(); }
-  SUBCASE("float to double") { check_cross_type_load_throws<F, D>(); }
+  SUBCASE("double to complex128") { check_cross_type_load_throws<D, Z>(ctx); }
+  SUBCASE("complex128 to double") { check_cross_type_load_throws<Z, D>(ctx); }
+  SUBCASE("double to float") { check_cross_type_load_throws<D, F>(ctx); }
+  SUBCASE("float to double") { check_cross_type_load_throws<F, D>(ctx); }
 
   // Loading the saved type succeeds, and the remedies the message names,
   // tcapi::convert and tcapi::real, take the loaded tensor from there.
   const std::string path = "test_cytnx_tensor_load_then_convert.cytn";
 
   SUBCASE("the saved type, from a stream") {
-    save_sample<D>(path);
-    tcapi::context_handle_t<D> dctx;
-    tcapi::create_context(dctx);
+    save_sample<D>(ctx, path);
     std::ifstream in(path, std::ios::binary);
-    const D loaded = tcapi::load<D>(dctx, in);
-    check_real_sample(dctx, loaded);
-    tcapi::destroy_context(dctx);
+    check_real_sample(ctx, tcapi::load<D>(ctx, in));
   }
 
   SUBCASE("double, then convert to complex128") {
-    save_sample<D>(path);
-    tcapi::context_handle_t<D> dctx;
-    tcapi::context_handle_t<Z> zctx;
-    tcapi::create_context(dctx);
-    tcapi::create_context(zctx);
-    const D loaded = tcapi::load<D>(dctx, path);
+    save_sample<D>(ctx, path);
     Z converted;
-    tcapi::convert(dctx, loaded, zctx, converted);
-    CHECK(tcapi::get_elem(zctx, converted, {0}) == cytnx::cytnx_complex128(1.5, 0.0));
-    CHECK(tcapi::get_elem(zctx, converted, {1}) == cytnx::cytnx_complex128(-2.5, 0.0));
-    tcapi::destroy_context(zctx);
-    tcapi::destroy_context(dctx);
+    tcapi::convert(ctx, tcapi::load<D>(ctx, path), ctx, converted);
+    CHECK(tcapi::get_elem(ctx, converted, {0}) == cytnx::cytnx_complex128(1.5, 0.0));
+    CHECK(tcapi::get_elem(ctx, converted, {1}) == cytnx::cytnx_complex128(-2.5, 0.0));
   }
 
   SUBCASE("float, then convert to double") {
-    save_sample<F>(path);
-    tcapi::context_handle_t<F> fctx;
-    tcapi::context_handle_t<D> dctx;
-    tcapi::create_context(fctx);
-    tcapi::create_context(dctx);
-    const F loaded = tcapi::load<F>(fctx, path);
+    save_sample<F>(ctx, path);
     D converted;
-    tcapi::convert(fctx, loaded, dctx, converted);
-    check_real_sample(dctx, converted);
-    tcapi::destroy_context(dctx);
-    tcapi::destroy_context(fctx);
+    tcapi::convert(ctx, tcapi::load<F>(ctx, path), ctx, converted);
+    check_real_sample(ctx, converted);
   }
 
   SUBCASE("complex128, then real to double") {
-    save_sample<Z>(path);
-    tcapi::context_handle_t<Z> zctx;
-    tcapi::create_context(zctx);
-    const Z loaded = tcapi::load<Z>(zctx, path);
-    const D re = tcapi::real(zctx, loaded);
-    tcapi::context_handle_t<D> dctx;
-    tcapi::create_context(dctx);
-    check_real_sample(dctx, re);
+    save_sample<Z>(ctx, path);
+    const Z loaded = tcapi::load<Z>(ctx, path);
+    check_real_sample(ctx, tcapi::real(ctx, loaded));
 
     // convert is not the remedy here: it throws when it casts complex
     // elements to real.
     D converted;
-    CHECK_THROWS(tcapi::convert(zctx, loaded, dctx, converted));
-    tcapi::destroy_context(dctx);
-    tcapi::destroy_context(zctx);
+    CHECK_THROWS(tcapi::convert(ctx, loaded, ctx, converted));
   }
 
   std::filesystem::remove(path);
+  tcapi::destroy_context(ctx);
+}
+
+// A file Cytnx wrote with any dtype loads only as the element type that maps
+// to it; every other stored dtype is rejected, its name in the message.
+TEST_CASE_TEMPLATE("CytnxTensor - load checks every stored dtype", Tensor,
+                   tcapi::CytnxTensor<cytnx::cytnx_float>, tcapi::CytnxTensor<cytnx::cytnx_double>,
+                   tcapi::CytnxTensor<cytnx::cytnx_complex64>,
+                   tcapi::CytnxTensor<cytnx::cytnx_complex128>) {
+  const unsigned int own = cytnx::Type_class::cy_typeid_v<typename Tensor::elem_type>;
+  const std::string path = "test_cytnx_tensor_stored_dtype.cytn";
+  Ctx ctx;
+  tcapi::create_context(ctx);
+
+  for (unsigned int dtype = 0; dtype < static_cast<unsigned int>(cytnx::N_Type); ++dtype) {
+    if (dtype == cytnx::Type.Void) {
+      continue;
+    }
+    CAPTURE(cytnx::Type.getname(dtype));
+    cytnx::zeros({2}, dtype).Save(path);
+    if (dtype == own) {
+      CHECK(tcapi::load<Tensor>(ctx, path).backend.dtype() == own);
+    } else {
+      const std::string message
+          = thrown_message<std::runtime_error>([&] { (void)tcapi::load<Tensor>(ctx, path); });
+      check_contains(message, {cytnx::Type.getname(own), cytnx::Type.getname(dtype)});
+    }
+  }
+
+  std::filesystem::remove(path);
+  tcapi::destroy_context(ctx);
 }
 
 // TCAPI V1: close succeeds iff the shapes match and max_i |a_i - b_i| <=

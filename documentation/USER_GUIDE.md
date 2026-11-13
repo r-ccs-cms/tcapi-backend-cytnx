@@ -269,6 +269,7 @@ tcapi::create_context(real_ctx);
 RealTensor saved = load<RealTensor>(real_ctx, "data/real.dat");
 Tensor as_complex;
 convert(real_ctx, saved, ctx, as_complex);
+tcapi::destroy_context(real_ctx);
 ```
 
 Saving a default-constructed tensor throws `std::runtime_error` before anything is written, so an existing file at the path is left as it was.
