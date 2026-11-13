@@ -748,10 +748,8 @@ namespace tcapi {
     detail::require_same_device(ins, "linear_combine");
 
     // Accumulate into the first term, a fresh product that shares no storage with any input.
-    // The product promotes to the wider of the coefficient's and the input's dtypes, where
-    // scaling in place would keep the input's or throw. It keeps a non-contiguous first input's
-    // layout; the result's layout is unspecified, so with later terms the product is made
-    // contiguous for speed.
+    // It keeps a non-contiguous first input's layout; the result's layout is unspecified, so
+    // with later terms the product is made contiguous for speed.
     out.backend = ins[0].get().backend * coefs[0];
     if (ins.size() > 1) {
       out.backend.contiguous_();
