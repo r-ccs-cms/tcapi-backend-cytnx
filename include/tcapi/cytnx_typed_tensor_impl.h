@@ -43,24 +43,77 @@ namespace tcapi {
       return t.dtype() == dtype ? t : t.astype(dtype);
     }
 
-    /// Throws std::invalid_argument when some but not all of `ins` are
-    /// zeroth-order. A TCAPI zeroth-order tensor is a Cytnx rank-0 tensor
-    /// (`is_scalar()`); a default-constructed one also has an empty shape, but
-    /// dtype Void. Cytnx's addition broadcasts a one-element operand, the rank-0
-    /// one included, against any shape, so without this a zeroth-order input
-    /// beside a tensor of another shape would be summed instead of rejected.
-    /// Beside a default-constructed tensor it would fail inside Cytnx's
-    /// arithmetic, with an error that names neither input.
+    /// The error a check on the inputs of `what` throws for input `i`.
+    inline std::invalid_argument input_error(const char* what, size_t i,
+                                             const std::string& problem) {
+      return std::invalid_argument(std::string(what) + ": input " + std::to_string(i) + " "
+                                   + problem);
+    }
+
+    /// Throws std::invalid_argument when some input of `ins` is a
+    /// default-constructed tensor, which holds no elements (Cytnx dtype Void).
+    /// Its shape is empty, like a zeroth-order tensor's, so require_same_shape
+    /// cannot tell it from one.
     template <typename TenT>
-    void require_rank0_all_or_none(const List<CRef<TenT>>& ins, const char* what) {
-      const bool first = ins[0].get().backend.is_scalar();
-      for (const auto& in : ins) {
-        if (in.get().backend.is_scalar() != first) {
-          throw std::invalid_argument(std::string(what)
-                                      + ": a zeroth-order input requires every input to be "
-                                        "zeroth-order");
+    void require_initialized(const List<CRef<TenT>>& ins, const char* what) {
+      for (size_t i = 0; i < ins.size(); ++i) {
+        if (ins[i].get().backend.is_void()) {
+          throw input_error(what, i, "is a default-constructed tensor");
         }
       }
+    }
+
+    /// Throws std::invalid_argument when some input of `ins` has a shape other
+    /// than the first input's. Cytnx's addition broadcasts a one-element
+    /// operand against any shape, so without this some inputs of different
+    /// shapes would be summed instead of rejected.
+    template <typename TenT>
+    void require_same_shape(const List<CRef<TenT>>& ins, const char* what) {
+      if (ins.empty()) {
+        return;
+      }
+      const auto shape_text = [](const std::vector<cytnx::cytnx_uint64>& shape) {
+        std::string text = "{";
+        for (size_t b = 0; b < shape.size(); ++b) {
+          text += (b == 0 ? "" : ", ") + std::to_string(shape[b]);
+        }
+        return text + "}";
+      };
+      const auto& shape = ins[0].get().backend.shape();
+      for (size_t i = 1; i < ins.size(); ++i) {
+        const auto& other = ins[i].get().backend.shape();
+        if (other != shape) {
+          throw input_error(what, i,
+                            "has shape " + shape_text(other) + ", but input 0 has shape "
+                                + shape_text(shape) + "; every input must have the same shape");
+        }
+      }
+    }
+
+    /// Throws std::invalid_argument when some input of `ins` is on a device
+    /// other than the first input's. Some of Cytnx's additions accept a
+    /// one-element operand on the CPU beside a tensor on another device, so
+    /// without this such inputs would be summed at some positions and rejected
+    /// at others.
+    template <typename TenT>
+    void require_same_device(const List<CRef<TenT>>& ins, const char* what) {
+      if (ins.empty()) {
+        return;
+      }
+      const int device = ins[0].get().backend.device();
+      for (size_t i = 1; i < ins.size(); ++i) {
+        if (ins[i].get().backend.device() != device) {
+          throw input_error(what, i, "is on a device other than input 0's");
+        }
+      }
+    }
+
+    /// A contiguous copy of `t` that shares no storage with `t`. Cytnx's
+    /// contiguous() returns `t` itself when `t` is already contiguous, and
+    /// keeps the storage of a zero-size non-contiguous `t`; both are cloned.
+    inline cytnx::Tensor contiguous_copy(const cytnx::Tensor& t) {
+      cytnx::Tensor out = t.contiguous();
+      return out.same_data(t) ? out.clone() : out;
     }
   }  // namespace detail
 
@@ -653,11 +706,29 @@ namespace tcapi {
     if (ins.empty()) {
       return out;
     }
-    detail::require_rank0_all_or_none(ins, "linear_combine");
+    detail::require_initialized(ins, "linear_combine");
+    detail::require_same_shape(ins, "linear_combine");
+    detail::require_same_device(ins, "linear_combine");
 
-    out.backend = ins[0].get().backend.clone();
-    for (size_t i = 1; i < ins.size(); ++i) {
-      out.backend = out.backend + ins[i].get().backend;
+    if (ins.size() == 1) {
+      out.backend = ins[0].get().backend.clone();
+      return out;
+    }
+    // Accumulate into one buffer that shares no storage with any input. The result's layout is
+    // unspecified; the buffer starts contiguous for speed. When the first input is contiguous it
+    // starts as the fresh sum of the first two inputs, which saves a pass over memory; otherwise
+    // as a contiguous copy of the first, which measured about ten times faster than summing a
+    // transposed first input directly, for 2^20 elements.
+    const cytnx::Tensor& first = ins[0].get().backend;
+    size_t next = 1;
+    if (first.is_contiguous()) {
+      out.backend = first + ins[1].get().backend;
+      next = 2;
+    } else {
+      out.backend = detail::contiguous_copy(first);
+    }
+    for (size_t i = next; i < ins.size(); ++i) {
+      out.backend += ins[i].get().backend;
     }
     return out;
   }
@@ -666,14 +737,25 @@ namespace tcapi {
                                                const List<CRef<TenT>>& ins,
                                                const std::vector<elem_t<TenT>>& coefs) {
     TenT out;
-    if (ins.empty() || ins.size() != coefs.size()) {
+    if (ins.size() != coefs.size()) {
+      throw std::invalid_argument("linear_combine: needs one coefficient per input");
+    }
+    if (ins.empty()) {
       return out;
     }
-    detail::require_rank0_all_or_none(ins, "linear_combine");
+    detail::require_initialized(ins, "linear_combine");
+    detail::require_same_shape(ins, "linear_combine");
+    detail::require_same_device(ins, "linear_combine");
 
+    // Accumulate into the first term, a fresh product that shares no storage with any input.
+    // It keeps a non-contiguous first input's layout; the result's layout is unspecified, so
+    // with later terms the product is made contiguous for speed.
     out.backend = ins[0].get().backend * coefs[0];
+    if (ins.size() > 1) {
+      out.backend.contiguous_();
+    }
     for (size_t i = 1; i < ins.size(); ++i) {
-      out.backend = out.backend + ins[i].get().backend * coefs[i];
+      out.backend += ins[i].get().backend * coefs[i];
     }
     return out;
   }
