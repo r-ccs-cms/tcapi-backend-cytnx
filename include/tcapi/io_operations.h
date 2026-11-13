@@ -45,6 +45,8 @@ namespace tcapi {
    * @param ctx Context handle for the tensor library
    * @param strg Storage object to load from
    * @return TenT Loaded tensor
+   * @throws std::runtime_error when the stored tensor's dtype is not the one the element type of
+   * TenT maps to
    */
   template <typename TenT, typename Storage>
   inline TenT load(context_handle_t<TenT>& ctx, Storage&& strg) {
@@ -61,6 +63,7 @@ namespace tcapi {
    * @param a Tensor to save
    * @param strg Storage object to save to; a temporary binds too, as the
    * forwarding reference TCAPI V1 declares
+   * @throws std::runtime_error when `a` is default-constructed, before anything is written
    */
   template <typename TenT, typename Storage>
   inline void save(context_handle_t<TenT>& ctx, const TenT& a, Storage&& strg) {

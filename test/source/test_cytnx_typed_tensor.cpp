@@ -257,6 +257,34 @@ TEST_CASE("CytnxTensor - Construction") {
   }
 }
 
+// A CytnxTensor<T> holds the dtype T maps to, or is default-constructed; the
+// constructor rejects every other dtype and names both in its message.
+TEST_CASE_TEMPLATE("CytnxTensor - construction checks the backend dtype", Tensor,
+                   tcapi::CytnxTensor<cytnx::cytnx_float>, tcapi::CytnxTensor<cytnx::cytnx_double>,
+                   tcapi::CytnxTensor<cytnx::cytnx_complex64>,
+                   tcapi::CytnxTensor<cytnx::cytnx_complex128>) {
+  const unsigned int own = cytnx::Type_class::cy_typeid_v<typename Tensor::elem_type>;
+
+  for (unsigned int dtype = 0; dtype < cytnx::N_Type; ++dtype) {
+    if (dtype == cytnx::Type.Void || dtype == own) {
+      continue;
+    }
+    CAPTURE(cytnx::Type.getname(dtype));
+    std::string message;
+    try {
+      Tensor t(cytnx::zeros({2}, dtype));
+    } catch (const std::invalid_argument& e) {
+      message = e.what();
+    }
+    CHECK(message.find(cytnx::Type.getname(own)) != std::string::npos);
+    CHECK(message.find(cytnx::Type.getname(dtype)) != std::string::npos);
+  }
+
+  Tensor matching(cytnx::zeros({2}, own));
+  CHECK(matching.backend.dtype() == own);
+  CHECK_NOTHROW(Tensor{cytnx::Tensor{}});
+}
+
 TEST_CASE("CytnxTensor - TCAPI API Integration") {
   using Tensor = tcapi::CytnxTensor<cytnx::cytnx_complex128>;
   using Elem = tcapi::tensor_traits<Tensor>::elem_t;
@@ -950,6 +978,125 @@ TEST_CASE("CytnxTensor - I/O Operations") {
 
     std::filesystem::remove(std::string(path));
   }
+}
+
+namespace {
+
+  // Saves a two-element tensor of element type From holding 1.5 and -2.5 + 0.5i
+  // (the imaginary part dropped for a real type) to `path`, which ends in
+  // .cytn so that load finds the file Cytnx writes.
+  template <typename From> void save_sample(const std::string& path) {
+    using Elem = tcapi::elem_t<From>;
+    tcapi::context_handle_t<From> ctx;
+    tcapi::create_context(ctx);
+    From t;
+    tcapi::allocate(ctx, {2}, t);
+    tcapi::set_elem(ctx, t, {0}, Elem(1.5));
+    if constexpr (std::is_floating_point_v<Elem>) {
+      tcapi::set_elem(ctx, t, {1}, Elem(-2.5));
+    } else {
+      tcapi::set_elem(ctx, t, {1}, Elem(-2.5, 0.5));
+    }
+    tcapi::save(ctx, t, path);
+    tcapi::destroy_context(ctx);
+  }
+
+  // Loading a file saved from From as To throws std::runtime_error naming both dtypes.
+  template <typename From, typename To> void check_cross_type_load_throws() {
+    const std::string path = "test_cytnx_tensor_cross_type_load.cytn";
+    save_sample<From>(path);
+    tcapi::context_handle_t<To> ctx;
+    tcapi::create_context(ctx);
+    std::string message;
+    try {
+      (void)tcapi::load<To>(ctx, path);
+    } catch (const std::runtime_error& e) {
+      message = e.what();
+    }
+    const auto from_name = cytnx::Type.getname(cytnx::Type_class::cy_typeid_v<tcapi::elem_t<From>>);
+    const auto to_name = cytnx::Type.getname(cytnx::Type_class::cy_typeid_v<tcapi::elem_t<To>>);
+    CAPTURE(message);
+    CHECK(message.find(path) != std::string::npos);
+    CHECK(message.find(from_name) != std::string::npos);
+    CHECK(message.find(to_name) != std::string::npos);
+    CHECK(message.find("tcapi::convert") != std::string::npos);
+    CHECK(message.find("tcapi::real") != std::string::npos);
+
+    // The same file read from a stream is rejected the same way.
+    message.clear();
+    std::ifstream in(path, std::ios::binary);
+    try {
+      (void)tcapi::load<To>(ctx, in);
+    } catch (const std::runtime_error& e) {
+      message = e.what();
+    }
+    CHECK(message.find(from_name) != std::string::npos);
+    CHECK(message.find(to_name) != std::string::npos);
+
+    tcapi::destroy_context(ctx);
+    std::filesystem::remove(path);
+  }
+
+}  // namespace
+
+TEST_CASE("CytnxTensor - load rejects a file saved from another element type") {
+  using F = tcapi::CytnxTensor<cytnx::cytnx_float>;
+  using D = tcapi::CytnxTensor<cytnx::cytnx_double>;
+  using Z = tcapi::CytnxTensor<cytnx::cytnx_complex128>;
+
+  SUBCASE("double to complex128") { check_cross_type_load_throws<D, Z>(); }
+  SUBCASE("complex128 to double") { check_cross_type_load_throws<Z, D>(); }
+  SUBCASE("double to float") { check_cross_type_load_throws<D, F>(); }
+  SUBCASE("float to double") { check_cross_type_load_throws<F, D>(); }
+
+  // The remedy the message names: load the saved type, then convert.
+  const std::string path = "test_cytnx_tensor_load_then_convert.cytn";
+
+  SUBCASE("double, then convert to complex128") {
+    save_sample<D>(path);
+    tcapi::context_handle_t<D> dctx;
+    tcapi::context_handle_t<Z> zctx;
+    tcapi::create_context(dctx);
+    tcapi::create_context(zctx);
+    const D loaded = tcapi::load<D>(dctx, path);
+    Z converted;
+    tcapi::convert(dctx, loaded, zctx, converted);
+    CHECK(tcapi::get_elem(zctx, converted, {0}) == cytnx::cytnx_complex128(1.5, 0.0));
+    CHECK(tcapi::get_elem(zctx, converted, {1}) == cytnx::cytnx_complex128(-2.5, 0.0));
+    tcapi::destroy_context(zctx);
+    tcapi::destroy_context(dctx);
+  }
+
+  SUBCASE("float, then convert to double") {
+    save_sample<F>(path);
+    tcapi::context_handle_t<F> fctx;
+    tcapi::context_handle_t<D> dctx;
+    tcapi::create_context(fctx);
+    tcapi::create_context(dctx);
+    const F loaded = tcapi::load<F>(fctx, path);
+    D converted;
+    tcapi::convert(fctx, loaded, dctx, converted);
+    CHECK(tcapi::get_elem(dctx, converted, {0}) == 1.5);
+    CHECK(tcapi::get_elem(dctx, converted, {1}) == -2.5);
+    tcapi::destroy_context(dctx);
+    tcapi::destroy_context(fctx);
+  }
+
+  SUBCASE("complex128, then real to double") {
+    save_sample<Z>(path);
+    tcapi::context_handle_t<Z> zctx;
+    tcapi::create_context(zctx);
+    const Z loaded = tcapi::load<Z>(zctx, path);
+    const D re = tcapi::real(zctx, loaded);
+    tcapi::context_handle_t<D> dctx;
+    tcapi::create_context(dctx);
+    CHECK(tcapi::get_elem(dctx, re, {0}) == 1.5);
+    CHECK(tcapi::get_elem(dctx, re, {1}) == -2.5);
+    tcapi::destroy_context(dctx);
+    tcapi::destroy_context(zctx);
+  }
+
+  std::filesystem::remove(path);
 }
 
 // TCAPI V1: close succeeds iff the shapes match and max_i |a_i - b_i| <=

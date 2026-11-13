@@ -1,8 +1,20 @@
 #pragma once
 
 #include <cytnx.hpp>
+#include <stdexcept>
+#include <string>
 
 namespace tcapi {
+
+  namespace detail {
+
+    /// True when `t` holds the dtype `ElemT` maps to, or is default-constructed (dtype Void).
+    /// The CytnxTensor constructor and tcapi::load both apply this rule.
+    template <typename ElemT> bool backend_dtype_matches(const cytnx::Tensor& t) {
+      return t.is_void() || t.dtype() == cytnx::Type_class::cy_typeid_v<ElemT>;
+    }
+
+  }  // namespace detail
 
   /**
    * @brief Typed wrapper for cytnx::Tensor to provide compile-time element type information
@@ -25,7 +37,9 @@ namespace tcapi {
    * @endcode
    */
   template <typename ElemT> struct CytnxTensor {
-    /// The underlying Cytnx tensor backend
+    /// The underlying Cytnx tensor backend. It holds the dtype `ElemT` maps to, or is
+    /// default-constructed (dtype Void); tcapi functions assume this. Cytnx operations on it can
+    /// change its dtype without error, so code that writes to it must keep the dtype.
     cytnx::Tensor backend;
 
     /// Compile-time element type information
@@ -34,8 +48,15 @@ namespace tcapi {
     /// Default constructor
     CytnxTensor() = default;
 
-    /// Construct from existing cytnx::Tensor
-    explicit CytnxTensor(cytnx::Tensor t) : backend(std::move(t)) {}
+    /// Construct from existing cytnx::Tensor. Throws std::invalid_argument when `t` is neither of
+    /// the dtype `ElemT` maps to nor default-constructed.
+    explicit CytnxTensor(cytnx::Tensor t) : backend(std::move(t)) {
+      if (!detail::backend_dtype_matches<ElemT>(backend)) {
+        throw std::invalid_argument(
+            "tcapi::CytnxTensor<" + cytnx::Type.getname(cytnx::Type_class::cy_typeid_v<ElemT>)
+            + "> cannot hold a cytnx::Tensor of dtype " + cytnx::Type.getname(backend.dtype()));
+      }
+    }
 
     /// Copy constructor
     CytnxTensor(const CytnxTensor&) = default;

@@ -39,3 +39,40 @@ TEST_CASE("tcapi::load error handling") {
 
   tcapi::destroy_context(ctx);
 }
+
+// Cytnx fails to save a default-constructed tensor only after truncating the
+// target file, so tcapi::save rejects one before opening anything.
+TEST_CASE("tcapi::save rejects a default-constructed tensor") {
+  using Tensor = tcapi::CytnxTensor<cytnx::cytnx_double>;
+  tcapi::context_handle_t<Tensor> ctx;
+  tcapi::create_context(ctx);
+  const Tensor empty;
+
+  SUBCASE("to a path, leaving an existing file intact") {
+    const auto path
+        = (std::filesystem::temp_directory_path() / "tcapi_test_save_default_constructed.cytn")
+              .string();
+    Tensor original;
+    tcapi::allocate(ctx, {2}, original);
+    tcapi::set_elem(ctx, original, {0}, 1.5);
+    tcapi::set_elem(ctx, original, {1}, -2.5);
+    tcapi::save(ctx, original, path);
+
+    CHECK_THROWS_WITH_AS(tcapi::save(ctx, empty, path), doctest::Contains("default-constructed"),
+                         std::runtime_error);
+
+    const Tensor loaded = tcapi::load<Tensor>(ctx, path);
+    CHECK(tcapi::get_elem(ctx, loaded, {0}) == 1.5);
+    CHECK(tcapi::get_elem(ctx, loaded, {1}) == -2.5);
+    std::filesystem::remove(path);
+  }
+
+  SUBCASE("to an output stream, writing nothing") {
+    std::ostringstream out;
+    CHECK_THROWS_WITH_AS(tcapi::save(ctx, empty, out), doctest::Contains("default-constructed"),
+                         std::runtime_error);
+    CHECK(out.str().empty());
+  }
+
+  tcapi::destroy_context(ctx);
+}

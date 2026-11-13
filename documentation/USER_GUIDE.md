@@ -154,6 +154,12 @@ using Tensor = tcapi::CytnxTensor<cytnx::cytnx_double>;      // double
 using Tensor = tcapi::CytnxTensor<cytnx::cytnx_float>;       // float
 ```
 
+#### The Backend's dtype
+
+`tensor.backend` is the underlying `cytnx::Tensor`. It holds the dtype the element type maps to (`cytnx::Type.ComplexDouble` for `cytnx_complex128`, and so on), or is default-constructed, and TCAPI functions assume this. Constructing a `CytnxTensor<ElemT>` from a `cytnx::Tensor` of another dtype throws `std::invalid_argument`.
+
+Cytnx operations on `backend` can change its dtype without error. In-place `+=` with a complex operand makes a real backend complex, and assigning the result of `.real()` makes a complex backend real. Code that writes to `backend` must keep its dtype. Writing elements through `backend.at<Elem>()`, as the examples in this guide do, keeps it.
+
 ### Memory Management
 
 TCAPI provides both in-place and out-of-place versions of most operations:
@@ -253,6 +259,20 @@ save(ctx, tensor, "data/tensor.dat");
 Tensor loaded = load<Tensor>(ctx, "data/tensor.dat");
 ```
 
+`load` reads a file as the element type it was saved with; loading it as another element type throws `std::runtime_error`. To get another element type, load the saved one and convert it. `convert` casts from real to complex and between precisions; for a complex file wanted as real, use `real` or `imag`, since `convert` throws for complex to real.
+
+```cpp
+// A file saved from a CytnxTensor<cytnx::cytnx_double>, wanted as a complex Tensor
+using RealTensor = tcapi::CytnxTensor<cytnx::cytnx_double>;
+tcapi::context_handle_t<RealTensor> real_ctx;
+tcapi::create_context(real_ctx);
+RealTensor saved = load<RealTensor>(real_ctx, "data/real.dat");
+Tensor as_complex;
+convert(real_ctx, saved, ctx, as_complex);
+```
+
+Saving a default-constructed tensor throws `std::runtime_error` before anything is written, so an existing file at the path is left as it was.
+
 ### Utility Functions
 
 ```cpp
@@ -268,7 +288,7 @@ bool equal = eq(ctx, tensor1, tensor2, 1e-10);  // With tolerance
 std::vector<std::complex<double>> container(total_elements);
 to_container(ctx, tensor, container.begin(), coordinate_mapping_function);
 
-// Convert between contexts (e.g., CPU ↔ GPU)
+// Convert between contexts (e.g., CPU ↔ GPU) or element types
 Tensor gpu_tensor;
 convert(ctx_cpu, cpu_tensor, ctx_gpu, gpu_tensor);
 ```
