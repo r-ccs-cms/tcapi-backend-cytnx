@@ -1006,6 +1006,12 @@ namespace {
   // tests below for all element types.
   using Ctx = tcapi::context_handle_t<tcapi::CytnxTensor<cytnx::cytnx_double>>;
 
+  // A path in the system temporary directory, so that files a failed test
+  // leaves behind stay out of the build tree.
+  std::string temp_path(const std::string& name) {
+    return (std::filesystem::temp_directory_path() / name).string();
+  }
+
   // Saves make_sample's tensor of type From to `path`. The path needs an
   // extension: Cytnx's Save appends .cytn to a path without one, so load would
   // not find the file.
@@ -1015,13 +1021,14 @@ namespace {
 
   // Loading a file saved from From as To throws std::runtime_error naming both dtypes.
   template <typename From, typename To> void check_cross_type_load_throws(Ctx& ctx) {
-    const std::string path = "test_cytnx_tensor_cross_type_load.cytn";
+    const std::string path = temp_path("tcapi_test_cross_type_load.cytn");
     save_sample<From>(ctx, path);
     std::string message
         = thrown_message<std::runtime_error>([&] { (void)tcapi::load<To>(ctx, path); });
     const auto from_name = cytnx::Type.getname(cytnx::Type_class::cy_typeid_v<tcapi::elem_t<From>>);
     const auto to_name = cytnx::Type.getname(cytnx::Type_class::cy_typeid_v<tcapi::elem_t<To>>);
-    check_contains(message, {path, from_name, to_name, "tcapi::convert", "tcapi::real"});
+    check_contains(message,
+                   {path, from_name, to_name, "tcapi::convert", "tcapi::real", "tcapi::imag"});
 
     // The same file read from a stream is rejected the same way.
     // The stream closes before the file is removed, which Windows requires.
@@ -1048,8 +1055,9 @@ TEST_CASE("CytnxTensor - load rejects a file saved from another element type") {
   SUBCASE("float to double") { check_cross_type_load_throws<F, D>(ctx); }
 
   // Loading the saved type succeeds, and the remedies the message names,
-  // tcapi::convert and tcapi::real, take the loaded tensor from there.
-  const std::string path = "test_cytnx_tensor_load_then_convert.cytn";
+  // tcapi::convert, tcapi::real and tcapi::imag, take the loaded tensor from
+  // there.
+  const std::string path = temp_path("tcapi_test_load_then_convert.cytn");
 
   SUBCASE("the saved type, from a stream") {
     save_sample<D>(ctx, path);
@@ -1072,10 +1080,13 @@ TEST_CASE("CytnxTensor - load rejects a file saved from another element type") {
     check_real_sample(ctx, converted);
   }
 
-  SUBCASE("complex128, then real to double") {
+  SUBCASE("complex128, then real or imag to double") {
     save_sample<Z>(ctx, path);
     const Z loaded = tcapi::load<Z>(ctx, path);
     check_real_sample(ctx, tcapi::real(ctx, loaded));
+    const D im = tcapi::imag(ctx, loaded);
+    CHECK(tcapi::get_elem(ctx, im, {0}) == 0.0);
+    CHECK(tcapi::get_elem(ctx, im, {1}) == 0.5);
 
     // convert is not the remedy here: it throws when it casts complex
     // elements to real.
@@ -1094,7 +1105,7 @@ TEST_CASE_TEMPLATE("CytnxTensor - load checks every stored dtype", Tensor,
                    tcapi::CytnxTensor<cytnx::cytnx_complex64>,
                    tcapi::CytnxTensor<cytnx::cytnx_complex128>) {
   const unsigned int own = cytnx::Type_class::cy_typeid_v<typename Tensor::elem_type>;
-  const std::string path = "test_cytnx_tensor_stored_dtype.cytn";
+  const std::string path = temp_path("tcapi_test_stored_dtype.cytn");
   Ctx ctx;
   tcapi::create_context(ctx);
 

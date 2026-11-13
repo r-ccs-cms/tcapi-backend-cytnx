@@ -152,7 +152,7 @@ namespace tcapi::detail {
             + cytnx::Type.getname(loaded.dtype()) + ", which a CytnxTensor<"
             + dtype_name<ElemT>()
             + "> cannot hold; load it as the element type it was saved with, then use "
-              "tcapi::convert, or tcapi::real for a complex tensor wanted as real");
+              "tcapi::convert, or tcapi::real or tcapi::imag for a complex tensor wanted as real");
       }
     }
 
