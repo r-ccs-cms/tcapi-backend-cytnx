@@ -203,6 +203,12 @@ TEST_CASE_TEMPLATE("TCAPI linear_combine - accumulation into an owned buffer", T
   const auto check_unshared = [](const Ten& result, std::initializer_list<const Ten*> inputs) {
     for (const Ten* in : inputs) CHECK_FALSE(result.backend.same_data(in->backend));
   };
+  // `result` holds expected(i, j) and shares storage with none of `inputs`.
+  const auto check_result
+      = [&](const Ten& result, auto expected, std::initializer_list<const Ten*> inputs) {
+          check_elems(result, expected);
+          check_unshared(result, inputs);
+        };
   // Both overloads reject `ins`, the weighted one given one coefficient per input.
   const auto rejects_inputs = [&](const tcapi::List<tcapi::CRef<Ten>>& ins) {
     CHECK_THROWS_AS(tcapi::linear_combine<Ten>(ctx, ins), std::invalid_argument);
@@ -216,25 +222,19 @@ TEST_CASE_TEMPLATE("TCAPI linear_combine - accumulation into an owned buffer", T
     const auto av = ramp_at(1.0);
     const auto bv = ramp_at(10.0);
 
-    auto one = tcapi::linear_combine<Ten>(ctx, {std::cref(a)});
-    check_elems(one, av);
-    auto pair = tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(b)});
-    check_elems(pair, [&](Coor i, Coor j) { return av(i, j) + bv(i, j); });
+    check_result(tcapi::linear_combine<Ten>(ctx, {std::cref(a)}), av, {&a});
+    check_result(tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(b)}),
+                 [&](Coor i, Coor j) { return av(i, j) + bv(i, j); }, {&a, &b});
     auto triple = tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(a), std::cref(a)});
-    check_elems(triple, [&](Coor i, Coor j) { return 3.0 * av(i, j); });
-    auto mixed = tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(b), std::cref(a)});
-    check_elems(mixed, [&](Coor i, Coor j) { return 2.0 * av(i, j) + bv(i, j); });
-    auto scaled = tcapi::linear_combine<Ten>(ctx, {std::cref(a)}, Coefs{0.5});
-    check_elems(scaled, [&](Coor i, Coor j) { return 0.5 * av(i, j); });
-    auto weighted = tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(b), std::cref(a)},
-                                               Coefs{0.5, -2.0, 0.25});
-    check_elems(weighted, [&](Coor i, Coor j) { return 0.75 * av(i, j) - 2.0 * bv(i, j); });
+    check_result(triple, [&](Coor i, Coor j) { return 3.0 * av(i, j); }, {&a});
+    check_result(tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(b), std::cref(a)}),
+                 [&](Coor i, Coor j) { return 2.0 * av(i, j) + bv(i, j); }, {&a, &b});
+    check_result(tcapi::linear_combine<Ten>(ctx, {std::cref(a)}, Coefs{0.5}),
+                 [&](Coor i, Coor j) { return 0.5 * av(i, j); }, {&a});
+    check_result(tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(b), std::cref(a)},
+                                            Coefs{0.5, -2.0, 0.25}),
+                 [&](Coor i, Coor j) { return 0.75 * av(i, j) - 2.0 * bv(i, j); }, {&a, &b});
 
-    check_unshared(one, {&a});
-    check_unshared(scaled, {&a});
-    for (const Ten* result : {&pair, &triple, &mixed, &weighted}) {
-      check_unshared(*result, {&a, &b});
-    }
     // Writing to a result leaves the inputs as they were.
     tcapi::set_elem(ctx, triple, Coors{0, 0}, -100.0);
     check_ramp(a, 1.0);
@@ -248,26 +248,19 @@ TEST_CASE_TEMPLATE("TCAPI linear_combine - accumulation into an owned buffer", T
     const auto pv = ramp_at(1.0);
     const auto bv = ramp_at(10.0);
 
-    auto pair = tcapi::linear_combine<Ten>(ctx, {std::cref(p), std::cref(b)});
-    check_elems(pair, [&](Coor i, Coor j) { return pv(i, j) + bv(i, j); });
-    check_unshared(pair, {&p, &b});
-    auto triple = tcapi::linear_combine<Ten>(ctx, {std::cref(p), std::cref(b), std::cref(p)});
-    check_elems(triple, [&](Coor i, Coor j) { return 2.0 * pv(i, j) + bv(i, j); });
-    check_unshared(triple, {&p, &b});
-    auto weighted = tcapi::linear_combine<Ten>(ctx, {std::cref(p), std::cref(b)}, Coefs{0.5, 2.0});
-    check_elems(weighted, [&](Coor i, Coor j) { return 0.5 * pv(i, j) + 2.0 * bv(i, j); });
-    check_unshared(weighted, {&p, &b});
-    auto weighted_triple = tcapi::linear_combine<Ten>(
-        ctx, {std::cref(p), std::cref(b), std::cref(p)}, Coefs{0.5, 2.0, -1.0});
-    check_elems(weighted_triple, [&](Coor i, Coor j) { return -0.5 * pv(i, j) + 2.0 * bv(i, j); });
-    check_unshared(weighted_triple, {&p, &b});
+    check_result(tcapi::linear_combine<Ten>(ctx, {std::cref(p), std::cref(b)}),
+                 [&](Coor i, Coor j) { return pv(i, j) + bv(i, j); }, {&p, &b});
+    check_result(tcapi::linear_combine<Ten>(ctx, {std::cref(p), std::cref(b), std::cref(p)}),
+                 [&](Coor i, Coor j) { return 2.0 * pv(i, j) + bv(i, j); }, {&p, &b});
+    check_result(tcapi::linear_combine<Ten>(ctx, {std::cref(p), std::cref(b)}, Coefs{0.5, 2.0}),
+                 [&](Coor i, Coor j) { return 0.5 * pv(i, j) + 2.0 * bv(i, j); }, {&p, &b});
+    check_result(tcapi::linear_combine<Ten>(ctx, {std::cref(p), std::cref(b), std::cref(p)},
+                                            Coefs{0.5, 2.0, -1.0}),
+                 [&](Coor i, Coor j) { return -0.5 * pv(i, j) + 2.0 * bv(i, j); }, {&p, &b});
 
-    auto one = tcapi::linear_combine<Ten>(ctx, {std::cref(p)});
-    check_elems(one, pv);
-    auto scaled = tcapi::linear_combine<Ten>(ctx, {std::cref(p)}, Coefs{2.0});
-    check_elems(scaled, [&](Coor i, Coor j) { return 2.0 * pv(i, j); });
-    check_unshared(one, {&p});
-    check_unshared(scaled, {&p});
+    check_result(tcapi::linear_combine<Ten>(ctx, {std::cref(p)}), pv, {&p});
+    check_result(tcapi::linear_combine<Ten>(ctx, {std::cref(p)}, Coefs{2.0}),
+                 [&](Coor i, Coor j) { return 2.0 * pv(i, j); }, {&p});
 
     check_ramp(p, 1.0);
     check_ramp(b, 10.0);
@@ -280,12 +273,10 @@ TEST_CASE_TEMPLATE("TCAPI linear_combine - accumulation into an owned buffer", T
     const auto av = ramp_at(1.0);
     const auto qv = ramp_at(10.0);
 
-    auto pair = tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(q)});
-    check_elems(pair, [&](Coor i, Coor j) { return av(i, j) + qv(i, j); });
-    auto weighted = tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(q)}, Coefs{-1.0, 0.5});
-    check_elems(weighted, [&](Coor i, Coor j) { return -av(i, j) + 0.5 * qv(i, j); });
-    check_unshared(pair, {&a, &q});
-    check_unshared(weighted, {&a, &q});
+    check_result(tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(q)}),
+                 [&](Coor i, Coor j) { return av(i, j) + qv(i, j); }, {&a, &q});
+    check_result(tcapi::linear_combine<Ten>(ctx, {std::cref(a), std::cref(q)}, Coefs{-1.0, 0.5}),
+                 [&](Coor i, Coor j) { return -av(i, j) + 0.5 * qv(i, j); }, {&a, &q});
 
     check_ramp(a, 1.0);
     check_ramp(q, 10.0);
