@@ -45,7 +45,8 @@ namespace tcapi {
    * @brief Convert between different CytnxTensor<ElemT> specializations
    *
    * Primary use case: Element type casting between different types
-   * (e.g., CytnxTensor<double> -> CytnxTensor<std::complex<double>>)
+   * (e.g., CytnxTensor<double> -> CytnxTensor<std::complex<double>>). Casting complex elements
+   * to a real element type throws; tcapi::real and tcapi::imag take that role.
    *
    * @tparam ElemT1 Source element type
    * @tparam ElemT2 Target element type

@@ -14,11 +14,8 @@
 #include <utility>
 
 #include "tcapi/cytnx_tensor_traits.h"
+#include "tcapi/cytnx_typed_tensor.h"
 #include "tcapi/tensor_traits.h"
-
-namespace tcapi {
-  template <typename ElemT> class CytnxTensor;
-}
 
 namespace tcapi::detail {
 
@@ -146,6 +143,28 @@ namespace tcapi::detail {
       return result;
     }
 
+    // `source` names where the tensor was read from, for the message.
+    template <typename ElemT>
+    void require_loaded_dtype(const cytnx::Tensor& loaded, const std::string& source) {
+      if (!backend_dtype_is_valid<ElemT>(loaded)) {
+        throw std::runtime_error(
+            "tcapi::load: " + source + " holds a tensor of dtype "
+            + cytnx::Type.getname(loaded.dtype()) + ", which a CytnxTensor<"
+            + dtype_name<ElemT>()
+            + "> cannot hold; load it as the element type it was saved with, then use "
+              "tcapi::convert, or tcapi::real or tcapi::imag for a complex tensor wanted as real");
+      }
+    }
+
+    // Cytnx fails to save a default-constructed tensor only after truncating the target file, so
+    // this runs before anything is opened. `target` names where the tensor was to be written.
+    inline void require_savable(const cytnx::Tensor& a, const std::string& target) {
+      if (a.is_void()) {
+        throw std::runtime_error("tcapi::save: cannot save a default-constructed tensor to "
+                                 + target);
+      }
+    }
+
     inline void save_to_path(const cytnx::Tensor& a, const std::filesystem::path& path) {
       ensure_parent_exists(path);
 
@@ -173,7 +192,10 @@ namespace tcapi::detail {
     template <typename StorageLike> static void load(context_handle_t<CytnxTensor<ElemT>>& ctx,
                                                      StorageLike&& strg, CytnxTensor<ElemT>& a) {
       (void)ctx;
-      load_from_path(to_path(std::forward<StorageLike>(strg)), a.backend);
+      const auto path = to_path(std::forward<StorageLike>(strg));
+      auto loaded = load_from_path(path);
+      require_loaded_dtype<ElemT>(loaded, path.string());
+      a.backend = std::move(loaded);
     }
 
     template <typename StorageLike>
@@ -188,7 +210,9 @@ namespace tcapi::detail {
                                                      const CytnxTensor<ElemT>& a,
                                                      StorageLike& strg) {
       (void)ctx;
-      save_to_path(a.backend, to_path(strg));
+      const auto path = to_path(strg);
+      require_savable(a.backend, path.string());
+      save_to_path(a.backend, path);
     }
   };
 
@@ -201,13 +225,16 @@ namespace tcapi::detail {
       (void)ctx;
       auto tmp_path = make_temp_cytn_file();
       copy_stream_to_file(strg, tmp_path);
+      cytnx::Tensor loaded;
       try {
-        load_from_path(tmp_path, a.backend);
+        load_from_path(tmp_path, loaded);
       } catch (...) {
         remove_file_silent(tmp_path);
         throw;
       }
       remove_file_silent(tmp_path);
+      require_loaded_dtype<ElemT>(loaded, "the stream");
+      a.backend = std::move(loaded);
     }
 
     template <typename StorageLike>
@@ -245,6 +272,7 @@ namespace tcapi::detail {
                                                      const CytnxTensor<ElemT>& a,
                                                      StorageLike& strg) {
       (void)ctx;
+      require_savable(a.backend, "a stream");
       auto tmp_path = make_temp_cytn_file();
       save_to_path(a.backend, tmp_path);
       try {
