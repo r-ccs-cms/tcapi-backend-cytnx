@@ -2,7 +2,6 @@
 
 #include <cytnx.hpp>
 #include <random>
-#include <utility>
 #include <vector>
 
 #include "tcapi/tcapi.h"
@@ -93,9 +92,9 @@ TEST_CASE("iTEBD Integration Test - Comprehensive TCAPI API Usage") {
     // Update tensors. Lambda keeps the singular values as a list, so take the
     // diagonal of the {chi, chi} sigma trunc_svd returns.
     tcapi::diag(context, Lambda_new);
-    Gamma[A] = std::move(GA_new);
-    Gamma[B] = std::move(GB_new);
-    Lambda[A] = std::move(Lambda_new);
+    Gamma[A] = tcapi::move<Tensor>(context, GA_new);
+    Gamma[B] = tcapi::move<Tensor>(context, GB_new);
+    Lambda[A] = tcapi::move<Tensor>(context, Lambda_new);
 
     // Normalize singular values
     tcapi::normalize(context, Lambda[A]);

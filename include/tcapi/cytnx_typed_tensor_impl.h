@@ -1512,8 +1512,9 @@ namespace tcapi {
 
     /// Runs `in_place` on a tensor holding `in`'s backend handle and moves that tensor into `out`
     /// only once `in_place` returns, so an error does not make `out` share `in`'s storage. A
-    /// result that still shares `in`'s storage is cloned first. `in_place` must not write into
-    /// the storage of the backend it is given, which `in` shares.
+    /// result that still shares `in`'s storage is cloned first. `in_place` may only replace the
+    /// backend it is given: that backend is `in`'s own, so changing it in place, its storage or
+    /// its shape, would change `in` too.
     template <typename TenT, typename InPlace>
     void out_of_place(const TenT& in, TenT& out, InPlace&& in_place) {
       TenT result(in.backend);

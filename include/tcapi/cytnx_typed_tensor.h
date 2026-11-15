@@ -74,13 +74,14 @@ namespace tcapi {
     /// shares its storage. Use `tcapi::copy(ctx, t)` for a deep copy.
     CytnxTensor(const CytnxTensor&) = delete;
 
-    /// Move constructor
+    /// Move constructor. cytnx::Tensor has no move operations, so the source keeps sharing the
+    /// storage it held with the new tensor; `tcapi::move(ctx, t)` leaves the source as TenT{}.
     CytnxTensor(CytnxTensor&&) = default;
 
     /// Deleted, like the copy constructor. Use `t = tcapi::copy(ctx, other)` for a deep copy.
     CytnxTensor& operator=(const CytnxTensor&) = delete;
 
-    /// Move assignment
+    /// Move assignment. As with the move constructor, the source keeps sharing its storage.
     CytnxTensor& operator=(CytnxTensor&&) = default;
 
     /// Destructor

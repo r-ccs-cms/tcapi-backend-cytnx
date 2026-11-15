@@ -127,6 +127,8 @@ Tensor b = tcapi::copy(ctx, tensor);  // b has its own storage
 Tensor c = tcapi::move(ctx, b);       // c takes b's storage; b is now Tensor{}
 ```
 
+A plain `std::move` also compiles, but the moved-from tensor keeps sharing storage with the tensor it was moved into, so a later write through one is visible through the other. Use `tcapi::move` when the source will be used again.
+
 #### Element-wise Operations with for_each
 
 ```cpp
