@@ -463,10 +463,8 @@ TEST_CASE("TCAPI out-of-place expand, shrink and extract_sub do not make out sha
   tcapi::context_handle_t<Ten> ctx;
   tcapi::create_context(ctx);
 
-  Ten in;
-  Ten out;
-  tcapi::zeros(ctx, {2, 3}, in);
-  tcapi::zeros(ctx, {4}, out);
+  auto in = tcapi::zeros<Ten>(ctx, {2, 3});
+  auto out = tcapi::zeros<Ten>(ctx, {4});
 
   SUBCASE("expand with a bond index past the order") {
     CHECK_THROWS_AS(tcapi::expand<Ten>(ctx, in, {{5, 1}}, out), std::invalid_argument);
@@ -493,6 +491,11 @@ TEST_CASE("TCAPI out-of-place expand, shrink and extract_sub do not make out sha
   SUBCASE("extract_sub that succeeds") {
     tcapi::extract_sub<Ten>(ctx, in, {{0, 1}, {0, 3}}, out);
     CHECK(tcapi::shape(ctx, out) == tcapi::shape_t<Ten>{1, 3});
+  }
+
+  SUBCASE("an in-place step that keeps the backend it is given") {
+    tcapi::detail::out_of_place(in, out, [](Ten&) {});
+    CHECK(tcapi::shape(ctx, out) == tcapi::shape_t<Ten>{2, 3});
   }
 
   CHECK_FALSE(out.backend.same_data(in.backend));

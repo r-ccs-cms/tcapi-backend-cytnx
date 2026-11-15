@@ -1511,14 +1511,16 @@ namespace tcapi {
   namespace detail {
 
     /// Runs `in_place` on a tensor holding `in`'s backend handle and moves that tensor into `out`
-    /// only once `in_place` returns, so an error does not make `out` share `in`'s storage.
-    /// `in_place` must replace the backend it is given rather than write into its storage, which
-    /// `in` shares.
+    /// only once `in_place` returns, so an error does not make `out` share `in`'s storage. A
+    /// result that still shares `in`'s storage is cloned first. `in_place` must not write into
+    /// the storage of the backend it is given, which `in` shares.
     template <typename TenT, typename InPlace>
     void out_of_place(const TenT& in, TenT& out, InPlace&& in_place) {
-      TenT result;
-      result.backend = in.backend;
+      TenT result(in.backend);
       std::forward<InPlace>(in_place)(result);
+      if (result.backend.same_data(in.backend)) {
+        result.backend = result.backend.clone();
+      }
       out = std::move(result);
     }
 
