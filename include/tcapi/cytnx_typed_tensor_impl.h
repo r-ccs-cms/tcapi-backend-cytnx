@@ -8,6 +8,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tcapi/construction_destruction.h"
@@ -1507,11 +1508,29 @@ namespace tcapi {
     inout.backend = std::move(expanded);
   }
 
+  namespace detail {
+
+    /// Runs `in_place` on a tensor holding `in`'s backend handle and moves that tensor into `out`
+    /// only once `in_place` returns, so an error does not make `out` share `in`'s storage. A
+    /// result that still shares `in`'s storage is cloned first. `in_place` may only replace the
+    /// backend it is given: that backend is `in`'s own, so changing it in place, its storage or
+    /// its shape, would change `in` too.
+    template <typename TenT, typename InPlace>
+    void out_of_place(const TenT& in, TenT& out, InPlace&& in_place) {
+      TenT result(in.backend);
+      std::forward<InPlace>(in_place)(result);
+      if (result.backend.same_data(in.backend)) {
+        result.backend = result.backend.clone();
+      }
+      out = std::move(result);
+    }
+
+  }  // namespace detail
+
   template <typename TenT>
   void expand(context_handle_t<TenT>& ctx, const TenT& in,
               const Map<bond_idx_t<TenT>, bond_dim_t<TenT>>& bond_idx_increment_map, TenT& out) {
-    out = in;
-    expand(ctx, out, bond_idx_increment_map);
+    detail::out_of_place(in, out, [&](TenT& t) { expand(ctx, t, bond_idx_increment_map); });
   }
 
   // shrink
@@ -1545,8 +1564,7 @@ namespace tcapi {
   template <typename TenT>
   void shrink(context_handle_t<TenT>& ctx, const TenT& in,
               const bond_idx_elem_coor_pair_map<TenT>& bd_idx_el_coor_pair_map, TenT& out) {
-    out = in;
-    shrink(ctx, out, bd_idx_el_coor_pair_map);
+    detail::out_of_place(in, out, [&](TenT& t) { shrink(ctx, t, bd_idx_el_coor_pair_map); });
   }
 
   // extract_sub
@@ -1580,8 +1598,7 @@ namespace tcapi {
   template <typename TenT>
   void extract_sub(context_handle_t<TenT>& ctx, const TenT& in,
                    const List<Pair<elem_coor_t<TenT>, elem_coor_t<TenT>>>& coor_pairs, TenT& out) {
-    out = in;
-    extract_sub(ctx, out, coor_pairs);
+    detail::out_of_place(in, out, [&](TenT& t) { extract_sub(ctx, t, coor_pairs); });
   }
 
   // replace_sub

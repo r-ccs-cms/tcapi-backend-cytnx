@@ -33,6 +33,10 @@ namespace tcapi {
    * At runtime, `backend` must hold the dtype `ElemT` maps to or be default-constructed; see
    * `backend`.
    *
+   * CytnxTensor is not copyable, because TCAPI V1 does not require TenT to be: code meant to run
+   * on any conforming backend duplicates a tensor with `tcapi::copy` and transfers one with
+   * `tcapi::move`.
+   *
    * Usage:
    * @code
    * using Tensor = tcapi::CytnxTensor<cytnx::cytnx_complex128>;
@@ -66,16 +70,18 @@ namespace tcapi {
       }
     }
 
-    /// Copy constructor
-    CytnxTensor(const CytnxTensor&) = default;
+    /// Deleted: an ordinary C++ copy is not part of the TCAPI V1 contract, and a copy of `backend`
+    /// shares its storage. Use `tcapi::copy` for a deep copy.
+    CytnxTensor(const CytnxTensor&) = delete;
 
-    /// Move constructor
+    /// Move constructor. cytnx::Tensor has no move operations, so the source keeps sharing the
+    /// storage it held with the new tensor; `tcapi::move` leaves the source default-constructed.
     CytnxTensor(CytnxTensor&&) = default;
 
-    /// Copy assignment
-    CytnxTensor& operator=(const CytnxTensor&) = default;
+    /// Deleted, like the copy constructor. Assign the result of `tcapi::copy` for a deep copy.
+    CytnxTensor& operator=(const CytnxTensor&) = delete;
 
-    /// Move assignment
+    /// Move assignment. As with the move constructor, the source keeps sharing its storage.
     CytnxTensor& operator=(CytnxTensor&&) = default;
 
     /// Destructor

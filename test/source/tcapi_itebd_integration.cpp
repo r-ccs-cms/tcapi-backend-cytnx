@@ -2,6 +2,7 @@
 
 #include <cytnx.hpp>
 #include <random>
+#include <vector>
 
 #include "tcapi/tcapi.h"
 
@@ -52,12 +53,15 @@ TEST_CASE("iTEBD Integration Test - Comprehensive TCAPI API Usage") {
   std::uniform_real_distribution<Real> dist(-1.0, 1.0);
   auto random_gen = [&gen, &dist]() { return dist(gen); };
 
-  std::vector<Tensor> Gamma
-      = {tcapi::random<Tensor>(context, tcapi::shape_t<Tensor>{chi, d, chi}, random_gen),
-         tcapi::random<Tensor>(context, tcapi::shape_t<Tensor>{chi, d, chi}, random_gen)};
-  std::vector<Tensor> Lambda
-      = {tcapi::random<Tensor>(context, tcapi::shape_t<Tensor>{chi}, random_gen),
-         tcapi::random<Tensor>(context, tcapi::shape_t<Tensor>{chi}, random_gen)};
+  // Filled element by element, since an initializer list would copy the tensors.
+  std::vector<Tensor> Gamma(2);
+  std::vector<Tensor> Lambda(2);
+  for (auto& gamma : Gamma) {
+    gamma = tcapi::random<Tensor>(context, tcapi::shape_t<Tensor>{chi, d, chi}, random_gen);
+  }
+  for (auto& lambda : Lambda) {
+    lambda = tcapi::random<Tensor>(context, tcapi::shape_t<Tensor>{chi}, random_gen);
+  }
 
   Tensor Theta;  // Declare outside loop for energy calculation
 
@@ -65,9 +69,9 @@ TEST_CASE("iTEBD Integration Test - Comprehensive TCAPI API Usage") {
   for (size_t i = 0; i < static_cast<size_t>(N); i++) {
     auto A = i % 2;
     auto B = (i + 1) % 2;
-    auto LambdaA_full = tcapi::copy(context, Lambda[A]);
+    auto LambdaA_full = tcapi::copy<Tensor>(context, Lambda[A]);
     tcapi::diag(context, LambdaA_full);
-    auto LambdaB_full = tcapi::copy(context, Lambda[B]);
+    auto LambdaB_full = tcapi::copy<Tensor>(context, Lambda[B]);
     tcapi::diag(context, LambdaB_full);
 
     // Build two-site wavefunction with correct NCON notation
@@ -88,15 +92,15 @@ TEST_CASE("iTEBD Integration Test - Comprehensive TCAPI API Usage") {
     // Update tensors. Lambda keeps the singular values as a list, so take the
     // diagonal of the {chi, chi} sigma trunc_svd returns.
     tcapi::diag(context, Lambda_new);
-    Gamma[A] = GA_new;
-    Gamma[B] = GB_new;
-    Lambda[A] = Lambda_new;
+    Gamma[A] = tcapi::move<Tensor>(context, GA_new);
+    Gamma[B] = tcapi::move<Tensor>(context, GB_new);
+    Lambda[A] = tcapi::move<Tensor>(context, Lambda_new);
 
     // Normalize singular values
     tcapi::normalize(context, Lambda[A]);
 
     // Inverse lambda for canonicalization
-    auto LambdaB_inv = tcapi::copy(context, Lambda[B]);
+    auto LambdaB_inv = tcapi::copy<Tensor>(context, Lambda[B]);
     tcapi::for_each(context, LambdaB_inv, [](Elem& elem) { elem = 1.0 / elem; });
     tcapi::diag(context, LambdaB_inv);
 
