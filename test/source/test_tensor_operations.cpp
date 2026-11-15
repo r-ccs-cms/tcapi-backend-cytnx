@@ -455,9 +455,10 @@ TEST_CASE("TCAPI Stack Operations") {
   tcapi::destroy_context(ctx);
 }
 
-// The out-of-place expand, shrink and extract_sub build their result apart from `out`, so when the
-// arguments are rejected `out` keeps its own storage instead of sharing `in`'s.
-TEST_CASE("TCAPI out-of-place expand, shrink and extract_sub leave out unchanged on error") {
+// An out-of-place expand, shrink or extract_sub must not make `out` share `in`'s storage, whether
+// it succeeds or rejects its arguments, or a later in-place write to `out` would change `in`. What
+// `out` holds after an error is otherwise unspecified.
+TEST_CASE("TCAPI out-of-place expand, shrink and extract_sub do not make out share in") {
   using Ten = tcapi::CytnxTensor<cytnx::cytnx_double>;
   tcapi::context_handle_t<Ten> ctx;
   tcapi::create_context(ctx);
@@ -466,7 +467,6 @@ TEST_CASE("TCAPI out-of-place expand, shrink and extract_sub leave out unchanged
   Ten out;
   tcapi::zeros(ctx, {2, 3}, in);
   tcapi::zeros(ctx, {4}, out);
-  const cytnx::Tensor out_storage = out.backend;
 
   SUBCASE("expand with a bond index past the order") {
     CHECK_THROWS_AS(tcapi::expand<Ten>(ctx, in, {{5, 1}}, out), std::invalid_argument);
@@ -480,7 +480,21 @@ TEST_CASE("TCAPI out-of-place expand, shrink and extract_sub leave out unchanged
     CHECK_THROWS_AS(tcapi::extract_sub<Ten>(ctx, in, {{0, 1}}, out), std::invalid_argument);
   }
 
-  CHECK(out.backend.same_data(out_storage));
+  SUBCASE("expand that succeeds") {
+    tcapi::expand<Ten>(ctx, in, {{0, 1}}, out);
+    CHECK(tcapi::shape(ctx, out) == tcapi::shape_t<Ten>{3, 3});
+  }
+
+  SUBCASE("shrink that succeeds") {
+    tcapi::shrink<Ten>(ctx, in, {{1, {0, 2}}}, out);
+    CHECK(tcapi::shape(ctx, out) == tcapi::shape_t<Ten>{2, 2});
+  }
+
+  SUBCASE("extract_sub that succeeds") {
+    tcapi::extract_sub<Ten>(ctx, in, {{0, 1}, {0, 3}}, out);
+    CHECK(tcapi::shape(ctx, out) == tcapi::shape_t<Ten>{1, 3});
+  }
+
   CHECK_FALSE(out.backend.same_data(in.backend));
 
   tcapi::destroy_context(ctx);
