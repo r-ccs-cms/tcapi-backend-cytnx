@@ -117,6 +117,16 @@ auto elem = tcapi::get_elem(ctx, tensor, {0, 0});
 elem = elem * 2.0 + Elem{1.0, 0.0};
 ```
 
+#### Copying and Moving
+
+`CytnxTensor` cannot be copied: `Tensor b = a;`, `b = a;` and a `std::vector<Tensor>` built from an initializer list of tensors do not compile, because TCAPI V1 does not require tensors to be copyable.
+Duplicate a tensor with `tcapi::copy`, which makes a deep copy, and transfer one with `tcapi::move`, which leaves the source as `Tensor{}`:
+
+```cpp
+Tensor b = tcapi::copy(ctx, tensor);  // b has its own storage
+Tensor c = tcapi::move(ctx, b);       // c takes b's storage; b is now Tensor{}
+```
+
 #### Element-wise Operations with for_each
 
 ```cpp
