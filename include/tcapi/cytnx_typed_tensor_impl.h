@@ -8,6 +8,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tcapi/construction_destruction.h"
@@ -1507,11 +1508,25 @@ namespace tcapi {
     inout.backend = std::move(expanded);
   }
 
+  namespace detail {
+
+    /// Runs `in_place` on a tensor holding `in`'s backend handle, then moves that tensor into
+    /// `out`, so `out` is left as it was if `in_place` throws. `in_place` must replace the
+    /// backend it is given rather than write into its storage, which `in` shares.
+    template <typename TenT, typename InPlace>
+    void out_of_place(const TenT& in, TenT& out, InPlace&& in_place) {
+      TenT result;
+      result.backend = in.backend;
+      std::forward<InPlace>(in_place)(result);
+      out = std::move(result);
+    }
+
+  }  // namespace detail
+
   template <typename TenT>
   void expand(context_handle_t<TenT>& ctx, const TenT& in,
               const Map<bond_idx_t<TenT>, bond_dim_t<TenT>>& bond_idx_increment_map, TenT& out) {
-    out.backend = in.backend;
-    expand(ctx, out, bond_idx_increment_map);
+    detail::out_of_place(in, out, [&](TenT& t) { expand(ctx, t, bond_idx_increment_map); });
   }
 
   // shrink
@@ -1545,8 +1560,7 @@ namespace tcapi {
   template <typename TenT>
   void shrink(context_handle_t<TenT>& ctx, const TenT& in,
               const bond_idx_elem_coor_pair_map<TenT>& bd_idx_el_coor_pair_map, TenT& out) {
-    out.backend = in.backend;
-    shrink(ctx, out, bd_idx_el_coor_pair_map);
+    detail::out_of_place(in, out, [&](TenT& t) { shrink(ctx, t, bd_idx_el_coor_pair_map); });
   }
 
   // extract_sub
@@ -1580,8 +1594,7 @@ namespace tcapi {
   template <typename TenT>
   void extract_sub(context_handle_t<TenT>& ctx, const TenT& in,
                    const List<Pair<elem_coor_t<TenT>, elem_coor_t<TenT>>>& coor_pairs, TenT& out) {
-    out.backend = in.backend;
-    extract_sub(ctx, out, coor_pairs);
+    detail::out_of_place(in, out, [&](TenT& t) { extract_sub(ctx, t, coor_pairs); });
   }
 
   // replace_sub

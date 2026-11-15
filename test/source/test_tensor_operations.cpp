@@ -454,3 +454,34 @@ TEST_CASE("TCAPI Stack Operations") {
 
   tcapi::destroy_context(ctx);
 }
+
+// The out-of-place expand, shrink and extract_sub build their result apart from `out`, so when the
+// arguments are rejected `out` keeps its own storage instead of sharing `in`'s.
+TEST_CASE("TCAPI out-of-place expand, shrink and extract_sub leave out unchanged on error") {
+  using Ten = tcapi::CytnxTensor<cytnx::cytnx_double>;
+  tcapi::context_handle_t<Ten> ctx;
+  tcapi::create_context(ctx);
+
+  Ten in;
+  Ten out;
+  tcapi::zeros(ctx, {2, 3}, in);
+  tcapi::zeros(ctx, {4}, out);
+  const cytnx::Tensor out_storage = out.backend;
+
+  SUBCASE("expand with a bond index past the order") {
+    CHECK_THROWS_AS(tcapi::expand<Ten>(ctx, in, {{5, 1}}, out), std::invalid_argument);
+  }
+
+  SUBCASE("shrink with a bond index past the order") {
+    CHECK_THROWS_AS(tcapi::shrink<Ten>(ctx, in, {{5, {0, 1}}}, out), std::invalid_argument);
+  }
+
+  SUBCASE("extract_sub with fewer coordinate pairs than the order") {
+    CHECK_THROWS_AS(tcapi::extract_sub<Ten>(ctx, in, {{0, 1}}, out), std::invalid_argument);
+  }
+
+  CHECK(out.backend.same_data(out_storage));
+  CHECK_FALSE(out.backend.same_data(in.backend));
+
+  tcapi::destroy_context(ctx);
+}
