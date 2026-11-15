@@ -123,8 +123,8 @@ elem = elem * 2.0 + Elem{1.0, 0.0};
 Duplicate a tensor with `tcapi::copy`, which makes a deep copy, and transfer one with `tcapi::move`, which leaves the source as `Tensor{}`:
 
 ```cpp
-Tensor b = tcapi::copy(ctx, tensor);  // b has its own storage
-Tensor c = tcapi::move(ctx, b);       // c takes b's storage; b is now Tensor{}
+Tensor b = tcapi::copy<Tensor>(ctx, tensor);  // b has its own storage
+Tensor c = tcapi::move<Tensor>(ctx, b);       // c takes b's storage; b is now Tensor{}
 ```
 
 A plain `std::move` also compiles, but the moved-from tensor keeps sharing storage with the tensor it was moved into, so a later write through one is visible through the other. Use `tcapi::move` when the source will be used again.

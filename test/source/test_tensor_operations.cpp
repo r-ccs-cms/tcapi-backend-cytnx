@@ -2,11 +2,23 @@
 #include <tcapi/tcapi.h>
 
 #include <cmath>
+#include <cstddef>
 #include <cytnx.hpp>
 #include <functional>
 #include <initializer_list>
 #include <stdexcept>
 #include <vector>
+
+namespace {
+
+  // Calls f(i, j) for every coordinate of a {2, 3} tensor.
+  template <typename F> void each_coor(F f) {
+    for (std::size_t i = 0; i < 2; ++i) {
+      for (std::size_t j = 0; j < 3; ++j) f(i, j);
+    }
+  }
+
+}  // namespace
 
 // FIXME: Trace operations cause AddressSanitizer container-overflow in Cytnx internal code
 // This appears to be a bug in the Cytnx library itself (UniTensor::UniTensor constructor)
@@ -170,12 +182,6 @@ TEST_CASE_TEMPLATE("TCAPI linear_combine - accumulation into an owned buffer", T
   // ramp_value(base, i, j) as a function of (i, j).
   const auto ramp_at
       = [=](double base) { return [=](Coor i, Coor j) { return ramp_value(base, i, j); }; };
-  // Calls f(i, j) for every coordinate of a {2, 3} tensor.
-  const auto each_coor = [](auto f) {
-    for (Coor i = 0; i < 2; ++i) {
-      for (Coor j = 0; j < 3; ++j) f(i, j);
-    }
-  };
   // A contiguous {2, 3} tensor holding ramp_value(base, i, j).
   const auto ramp = [&](double base) {
     auto t = tcapi::zeros<Ten>(ctx, {2, 3});
@@ -455,15 +461,18 @@ TEST_CASE("TCAPI Stack Operations") {
   tcapi::destroy_context(ctx);
 }
 
-// An out-of-place expand, shrink or extract_sub must not make `out` share `in`'s storage, whether
-// it succeeds or rejects its arguments, or a later in-place write to `out` would change `in`. What
-// `out` holds after an error is otherwise unspecified.
+// An out-of-place expand, shrink or extract_sub must leave `in` as it was and must not make `out`
+// share `in`'s storage, whether it succeeds or rejects its arguments, or a later in-place write to
+// `out` would change `in`. What `out` holds after an error is otherwise unspecified.
 TEST_CASE("TCAPI out-of-place expand, shrink and extract_sub do not make out share in") {
   using Ten = tcapi::CytnxTensor<cytnx::cytnx_double>;
   tcapi::context_handle_t<Ten> ctx;
   tcapi::create_context(ctx);
 
   auto in = tcapi::zeros<Ten>(ctx, {2, 3});
+  auto in_value = [](std::size_t i, std::size_t j) { return static_cast<double>(10 * i + j + 1); };
+  each_coor(
+      [&](std::size_t i, std::size_t j) { tcapi::set_elem<Ten>(ctx, in, {i, j}, in_value(i, j)); });
   auto out = tcapi::zeros<Ten>(ctx, {4});
 
   SUBCASE("expand with a bond index past the order") {
@@ -499,6 +508,10 @@ TEST_CASE("TCAPI out-of-place expand, shrink and extract_sub do not make out sha
   }
 
   CHECK_FALSE(out.backend.same_data(in.backend));
+  REQUIRE(tcapi::shape(ctx, in) == tcapi::shape_t<Ten>{2, 3});
+  each_coor([&](std::size_t i, std::size_t j) {
+    CHECK(tcapi::get_elem<Ten>(ctx, in, {i, j}) == in_value(i, j));
+  });
 
   tcapi::destroy_context(ctx);
 }

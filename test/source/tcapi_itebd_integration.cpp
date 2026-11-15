@@ -69,9 +69,9 @@ TEST_CASE("iTEBD Integration Test - Comprehensive TCAPI API Usage") {
   for (size_t i = 0; i < static_cast<size_t>(N); i++) {
     auto A = i % 2;
     auto B = (i + 1) % 2;
-    auto LambdaA_full = tcapi::copy(context, Lambda[A]);
+    auto LambdaA_full = tcapi::copy<Tensor>(context, Lambda[A]);
     tcapi::diag(context, LambdaA_full);
-    auto LambdaB_full = tcapi::copy(context, Lambda[B]);
+    auto LambdaB_full = tcapi::copy<Tensor>(context, Lambda[B]);
     tcapi::diag(context, LambdaB_full);
 
     // Build two-site wavefunction with correct NCON notation
@@ -100,7 +100,7 @@ TEST_CASE("iTEBD Integration Test - Comprehensive TCAPI API Usage") {
     tcapi::normalize(context, Lambda[A]);
 
     // Inverse lambda for canonicalization
-    auto LambdaB_inv = tcapi::copy(context, Lambda[B]);
+    auto LambdaB_inv = tcapi::copy<Tensor>(context, Lambda[B]);
     tcapi::for_each(context, LambdaB_inv, [](Elem& elem) { elem = 1.0 / elem; });
     tcapi::diag(context, LambdaB_inv);
 
