@@ -54,17 +54,14 @@ TEST_CASE("iTEBD Integration Test - Comprehensive TCAPI API Usage") {
   std::uniform_real_distribution<Real> dist(-1.0, 1.0);
   auto random_gen = [&gen, &dist]() { return dist(gen); };
 
-  // Built by push_back, since an initializer list would copy the tensors.
-  std::vector<Tensor> Gamma;
-  std::vector<Tensor> Lambda;
-  Gamma.reserve(2);
-  Lambda.reserve(2);
-  for (int site = 0; site < 2; ++site) {
-    Gamma.push_back(
-        tcapi::random<Tensor>(context, tcapi::shape_t<Tensor>{chi, d, chi}, random_gen));
+  // Filled element by element, since an initializer list would copy the tensors.
+  std::vector<Tensor> Gamma(2);
+  std::vector<Tensor> Lambda(2);
+  for (auto& gamma : Gamma) {
+    gamma = tcapi::random<Tensor>(context, tcapi::shape_t<Tensor>{chi, d, chi}, random_gen);
   }
-  for (int site = 0; site < 2; ++site) {
-    Lambda.push_back(tcapi::random<Tensor>(context, tcapi::shape_t<Tensor>{chi}, random_gen));
+  for (auto& lambda : Lambda) {
+    lambda = tcapi::random<Tensor>(context, tcapi::shape_t<Tensor>{chi}, random_gen);
   }
 
   Tensor Theta;  // Declare outside loop for energy calculation

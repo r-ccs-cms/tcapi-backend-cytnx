@@ -134,7 +134,7 @@ TEST_CASE("CytnxTensor - Arithmetic Operations on elem_t") {
 }
 
 // TCAPI V1 leaves copying TenT out of the portable contract; this backend leaves it out of the
-// type, so code tested here cannot copy a tensor by accident.
+// type, so ordinary C++ copying of a tensor does not compile in code tested here.
 TEST_CASE_TEMPLATE_DEFINE("CytnxTensor - Move-only", Tensor, cytnx_tensor_move_only) {
   static_assert(!std::is_copy_constructible_v<Tensor>);
   static_assert(!std::is_copy_assignable_v<Tensor>);
