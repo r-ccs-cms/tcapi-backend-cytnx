@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
 
 #include "diagonal_check.h"
@@ -132,6 +133,17 @@ TEST_CASE("CytnxTensor - Arithmetic Operations on elem_t") {
   }
 }
 
+// TCAPI V1 leaves copying TenT out of the portable contract; this backend leaves it out of the
+// type, so code tested here cannot copy a tensor by accident.
+TEST_CASE_TEMPLATE_DEFINE("CytnxTensor - Move-only", Tensor, cytnx_tensor_move_only) {
+  static_assert(!std::is_copy_constructible_v<Tensor>);
+  static_assert(!std::is_copy_assignable_v<Tensor>);
+  static_assert(std::is_move_constructible_v<Tensor>);
+  static_assert(std::is_move_assignable_v<Tensor>);
+}
+
+TEST_CASE_TEMPLATE_APPLY(cytnx_tensor_move_only, tcapi::supported_ten_types_t);
+
 TEST_CASE("CytnxTensor - Construction") {
   SUBCASE("Default construction") {
     tcapi::CytnxTensor<cytnx::cytnx_double> t;
@@ -147,16 +159,6 @@ TEST_CASE("CytnxTensor - Construction") {
     CHECK(t.backend.shape().size() == 2);
     CHECK(t.backend.shape()[0] == 2);
     CHECK(t.backend.shape()[1] == 2);
-  }
-
-  SUBCASE("Copy construction") {
-    cytnx::Tensor backend = cytnx::zeros({3, 3}, cytnx::Type.ComplexDouble);
-    tcapi::CytnxTensor<cytnx::cytnx_complex128> t1(backend);
-    tcapi::CytnxTensor<cytnx::cytnx_complex128> t2 = t1;
-
-    // Both should have valid backends
-    CHECK(t1.backend.shape().size() == 2);
-    CHECK(t2.backend.shape().size() == 2);
   }
 
   SUBCASE("Move construction") {

@@ -1510,7 +1510,7 @@ namespace tcapi {
   template <typename TenT>
   void expand(context_handle_t<TenT>& ctx, const TenT& in,
               const Map<bond_idx_t<TenT>, bond_dim_t<TenT>>& bond_idx_increment_map, TenT& out) {
-    out = in;
+    out.backend = in.backend;
     expand(ctx, out, bond_idx_increment_map);
   }
 
@@ -1545,7 +1545,7 @@ namespace tcapi {
   template <typename TenT>
   void shrink(context_handle_t<TenT>& ctx, const TenT& in,
               const bond_idx_elem_coor_pair_map<TenT>& bd_idx_el_coor_pair_map, TenT& out) {
-    out = in;
+    out.backend = in.backend;
     shrink(ctx, out, bd_idx_el_coor_pair_map);
   }
 
@@ -1580,7 +1580,7 @@ namespace tcapi {
   template <typename TenT>
   void extract_sub(context_handle_t<TenT>& ctx, const TenT& in,
                    const List<Pair<elem_coor_t<TenT>, elem_coor_t<TenT>>>& coor_pairs, TenT& out) {
-    out = in;
+    out.backend = in.backend;
     extract_sub(ctx, out, coor_pairs);
   }
 

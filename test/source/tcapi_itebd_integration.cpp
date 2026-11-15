@@ -2,6 +2,8 @@
 
 #include <cytnx.hpp>
 #include <random>
+#include <utility>
+#include <vector>
 
 #include "tcapi/tcapi.h"
 
@@ -52,12 +54,18 @@ TEST_CASE("iTEBD Integration Test - Comprehensive TCAPI API Usage") {
   std::uniform_real_distribution<Real> dist(-1.0, 1.0);
   auto random_gen = [&gen, &dist]() { return dist(gen); };
 
-  std::vector<Tensor> Gamma
-      = {tcapi::random<Tensor>(context, tcapi::shape_t<Tensor>{chi, d, chi}, random_gen),
-         tcapi::random<Tensor>(context, tcapi::shape_t<Tensor>{chi, d, chi}, random_gen)};
-  std::vector<Tensor> Lambda
-      = {tcapi::random<Tensor>(context, tcapi::shape_t<Tensor>{chi}, random_gen),
-         tcapi::random<Tensor>(context, tcapi::shape_t<Tensor>{chi}, random_gen)};
+  // Built by push_back, since an initializer list would copy the tensors.
+  std::vector<Tensor> Gamma;
+  std::vector<Tensor> Lambda;
+  Gamma.reserve(2);
+  Lambda.reserve(2);
+  for (int site = 0; site < 2; ++site) {
+    Gamma.push_back(
+        tcapi::random<Tensor>(context, tcapi::shape_t<Tensor>{chi, d, chi}, random_gen));
+  }
+  for (int site = 0; site < 2; ++site) {
+    Lambda.push_back(tcapi::random<Tensor>(context, tcapi::shape_t<Tensor>{chi}, random_gen));
+  }
 
   Tensor Theta;  // Declare outside loop for energy calculation
 
@@ -88,9 +96,9 @@ TEST_CASE("iTEBD Integration Test - Comprehensive TCAPI API Usage") {
     // Update tensors. Lambda keeps the singular values as a list, so take the
     // diagonal of the {chi, chi} sigma trunc_svd returns.
     tcapi::diag(context, Lambda_new);
-    Gamma[A] = GA_new;
-    Gamma[B] = GB_new;
-    Lambda[A] = Lambda_new;
+    Gamma[A] = std::move(GA_new);
+    Gamma[B] = std::move(GB_new);
+    Lambda[A] = std::move(Lambda_new);
 
     // Normalize singular values
     tcapi::normalize(context, Lambda[A]);
