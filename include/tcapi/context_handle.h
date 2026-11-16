@@ -2,15 +2,17 @@
 
 namespace tcapi {
 
-  // Only the CytnxContextHandle specializations below have non-deleted definitions. Deleting the
-  // primary templates turns a call whose argument deduces another type into a compile error
-  // instead of an undefined reference at link time. A deleted definition must be the first
-  // declaration of its template, and the friend declaration in CytnxContextHandle redeclares
-  // create_context, so that deletion stays here, ahead of the class. The destroy_context deletion
-  // stays beside it.
+  // Of these two templates, only the CytnxContextHandle specializations below have non-deleted
+  // definitions. Deleting the primary templates turns a call whose argument deduces another type
+  // into a compile error instead of an undefined reference at link time. A deleted definition
+  // must be the first declaration of its template, so the deletions open this header.
+  // tcapi/miscellaneous.h, the only other header that declares these names, reaches this one
+  // through tcapi/cytnx_tensor_traits.h before its own declarations.
   template <typename ContextHandleT> void create_context(ContextHandleT& ctx) = delete;
   template <typename ContextHandleT> void destroy_context(ContextHandleT& ctx) = delete;
   class CytnxContextHandle;
+  template <> void create_context(CytnxContextHandle& ctx);
+  template <> void destroy_context(CytnxContextHandle& ctx);
   void create_context(CytnxContextHandle& ctx, int gpu_id);
 
   /**
@@ -29,7 +31,7 @@ namespace tcapi {
     void set_value(int v) { value_ = v; }
 
     // Friend declarations to allow create_context access
-    template <typename T> friend void create_context(T& ctx);
+    friend void create_context<>(CytnxContextHandle& ctx);
     friend void create_context(CytnxContextHandle& ctx, int gpu_id);
 
   public:
@@ -52,8 +54,5 @@ namespace tcapi {
     // Explicit getter
     int get() const { return value_; }
   };
-
-  template <> void create_context(CytnxContextHandle& ctx);
-  template <> void destroy_context(CytnxContextHandle& ctx);
 
 }  // namespace tcapi
