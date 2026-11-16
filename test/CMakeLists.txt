@@ -19,10 +19,14 @@ if (doctest_ADDED)
   add_library(doctest::doctest ALIAS doctest)
 endif()
 
-if(NOT TARGET TCAPI::TCAPI)
-  # test/ is configured on its own, so it is this repository's top-level build
-  # and tcapi_enable_warnings applies, although TCAPI is not the top level.
+# Configured on its own, this test project is the top-level build of this
+# repository, so the warnings default to ON as they do for a configure from the
+# root, although TCAPI added below is not the top-level project.
+if(PROJECT_IS_TOP_LEVEL AND NOT DEFINED TCAPI_ENABLE_WARNINGS)
   set(TCAPI_ENABLE_WARNINGS ON)
+endif()
+
+if(NOT TARGET TCAPI::TCAPI)
   CPMAddPackage(NAME TCAPI SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
 endif()
 
