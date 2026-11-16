@@ -44,7 +44,7 @@ TEST_CASE("Integration with TCAPI_VERBOSE") {
     CHECK_NOTHROW(show(ctx, a));
 
     Ten b = eye<Ten>(ctx, 2);
-    CHECK(eq(ctx, a, b, 1e-10));
+    CHECK(close(ctx, a, b, 1e-10));
 
     Ten c;
     context_handle_t<Ten> ctx2;
@@ -54,7 +54,7 @@ TEST_CASE("Integration with TCAPI_VERBOSE") {
     std::vector<std::complex<double>> container(4);
     auto row_major_map
         = [](const elem_coors_t<Ten>& coors) -> std::ptrdiff_t { return coors[0] * 2 + coors[1]; };
-    CHECK_NOTHROW(to_container(ctx, a, container.begin(), row_major_map));
+    CHECK_NOTHROW(to_range(ctx, a, container.begin(), row_major_map));
 
     destroy_context(ctx2);
   }

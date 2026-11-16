@@ -127,8 +127,7 @@ int main() {
     Tensor a = tcapi::zeros<Tensor>(ctx, {3, 4});
     Tensor b = tcapi::eye<Tensor>(ctx, 3);
 
-    Tensor c;
-    tcapi::copy(ctx, a, c);
+    Tensor c = tcapi::copy(ctx, a);
     auto norm_val = tcapi::norm(ctx, b);
 
     tcapi::show(ctx, b);
@@ -150,8 +149,7 @@ int main() {
     tcapi::context_handle_t<Tensor> ctx;
     tcapi::create_context(ctx);
 
-    Tensor tensor;
-    tcapi::allocate(ctx, {100, 100}, tensor);
+    Tensor tensor = tcapi::allocate<Tensor>(ctx, {100, 100});
 
     tcapi::for_each(ctx, tensor, [](Elem& elem) {
         elem = std::sqrt(elem) * 2.0;

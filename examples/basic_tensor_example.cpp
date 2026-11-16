@@ -24,7 +24,7 @@ int main() {
     }
     std::cout << "\n";
 
-    std::cout << "Tensor rank: " << tcapi::rank(ctx, a) << "\n";
+    std::cout << "Tensor order: " << tcapi::order(ctx, a) << "\n";
     std::cout << "Tensor size: " << tcapi::size(ctx, a) << " elements\n";
 
     // Set some elements

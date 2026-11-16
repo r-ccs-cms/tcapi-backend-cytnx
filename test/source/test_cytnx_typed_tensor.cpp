@@ -176,8 +176,7 @@ TEST_CASE("CytnxTensor - Construction") {
     tcapi::create_context(ctx);
 
     // Create and fill a tensor
-    Tensor tensor;
-    tcapi::fill(ctx, {3, 4}, 5.0, tensor);
+    Tensor tensor = tcapi::fill<Tensor>(ctx, {3, 4}, 5.0);
 
     // Verify tensor is initialized
     CHECK(tensor.backend.shape().size() == 2);
@@ -191,7 +190,7 @@ TEST_CASE("CytnxTensor - Construction") {
     CHECK(tensor.backend.shape().size() == 0);
   }
 
-  SUBCASE("assign_from_container with row-major indexing") {
+  SUBCASE("assign_from_range with row-major indexing") {
     using Tensor = tcapi::CytnxTensor<cytnx::cytnx_complex128>;
     using Elem = tcapi::tensor_traits<Tensor>::elem_t;
     tcapi::context_handle_t<Tensor> ctx;
@@ -230,7 +229,7 @@ TEST_CASE("CytnxTensor - Construction") {
     CHECK(std::abs(elem_12.real() - 6.0) < 1e-10);
   }
 
-  SUBCASE("assign_from_container with column-major indexing") {
+  SUBCASE("assign_from_range with column-major indexing") {
     using Tensor = tcapi::CytnxTensor<cytnx::cytnx_double>;
     using Elem = tcapi::tensor_traits<Tensor>::elem_t;
     tcapi::context_handle_t<Tensor> ctx;
@@ -320,8 +319,7 @@ TEST_CASE("CytnxTensor - TCAPI API Integration") {
   tcapi::create_context(ctx);
 
   SUBCASE("allocate and get_elem") {
-    Tensor tensor;
-    tcapi::allocate(ctx, {2, 3}, tensor);
+    Tensor tensor = tcapi::allocate<Tensor>(ctx, {2, 3});
 
     // Check shape
     CHECK(tensor.backend.shape().size() == 2);
@@ -340,8 +338,7 @@ TEST_CASE("CytnxTensor - TCAPI API Integration") {
   }
 
   SUBCASE("Element arithmetic operations") {
-    Tensor tensor;
-    tcapi::allocate(ctx, {2, 2}, tensor);
+    Tensor tensor = tcapi::allocate<Tensor>(ctx, {2, 2});
 
     tensor.backend.at<Elem>({0, 0}) = Elem{1.0, 2.0};
     tensor.backend.at<Elem>({0, 1}) = Elem{3.0, 4.0};
@@ -376,8 +373,7 @@ TEST_CASE("CytnxTensor - for_each with arithmetic operations") {
   tcapi::create_context(ctx);
 
   SUBCASE("for_each with std::sqrt") {
-    Tensor tensor;
-    tcapi::allocate(ctx, {3, 3}, tensor);
+    Tensor tensor = tcapi::allocate<Tensor>(ctx, {3, 3});
 
     // Fill with constant values
     for (int i = 0; i < 3; ++i) {
@@ -404,8 +400,7 @@ TEST_CASE("CytnxTensor - for_each with arithmetic operations") {
   }
 
   SUBCASE("for_each with addition") {
-    Tensor tensor;
-    tcapi::allocate(ctx, {2, 2}, tensor);
+    Tensor tensor = tcapi::allocate<Tensor>(ctx, {2, 2});
 
     // Fill with constant values
     for (int i = 0; i < 2; ++i) {
@@ -433,8 +428,7 @@ TEST_CASE("CytnxTensor - for_each with arithmetic operations") {
   }
 
   SUBCASE("for_each with multiplication and division") {
-    Tensor tensor;
-    tcapi::allocate(ctx, {2, 3}, tensor);
+    Tensor tensor = tcapi::allocate<Tensor>(ctx, {2, 3});
 
     // Fill with constant values
     for (int i = 0; i < 2; ++i) {
@@ -464,8 +458,7 @@ TEST_CASE("CytnxTensor - for_each with arithmetic operations") {
   }
 
   SUBCASE("for_each with std::abs and conditional") {
-    Tensor tensor;
-    tcapi::allocate(ctx, {3, 3}, tensor);
+    Tensor tensor = tcapi::allocate<Tensor>(ctx, {3, 3});
 
     // Fill with varying values
     int counter = 0;
@@ -500,8 +493,7 @@ TEST_CASE("CytnxTensor - for_each with arithmetic operations") {
   }
 
   SUBCASE("for_each with complex arithmetic - inversion") {
-    Tensor tensor;
-    tcapi::allocate(ctx, {2, 2}, tensor);
+    Tensor tensor = tcapi::allocate<Tensor>(ctx, {2, 2});
 
     // Fill with non-zero values
     for (int i = 0; i < 2; ++i) {
@@ -528,8 +520,7 @@ TEST_CASE("CytnxTensor - for_each with arithmetic operations") {
   }
 
   SUBCASE("const for_each with arithmetic - sum accumulation") {
-    Tensor tensor;
-    tcapi::allocate(ctx, {3, 3}, tensor);
+    Tensor tensor = tcapi::allocate<Tensor>(ctx, {3, 3});
 
     // Fill with constant values
     for (int i = 0; i < 3; ++i) {
@@ -551,8 +542,7 @@ TEST_CASE("CytnxTensor - for_each with arithmetic operations") {
   }
 
   SUBCASE("for_each with std::exp and std::log") {
-    Tensor tensor;
-    tcapi::allocate(ctx, {2, 2}, tensor);
+    Tensor tensor = tcapi::allocate<Tensor>(ctx, {2, 2});
 
     // Fill with constant values
     for (int i = 0; i < 2; ++i) {
@@ -592,13 +582,9 @@ TEST_CASE("CytnxTensor - trunc_svd operation") {
   tcapi::create_context(ctx);
 
   SUBCASE("Basic trunc_svd functionality") {
-    // Create a 4x6 random matrix
-    Tensor a;
-    tcapi::allocate(ctx, {4, 6}, a);
-
-    // Fill with simple values for reproducible test
+    // Create a 4x6 random matrix, seeded for a reproducible test
     std::mt19937 rng(42);
-    tcapi::random(ctx, {4, 6}, rng, a);
+    Tensor a = tcapi::random<Tensor>(ctx, {4, 6}, rng);
 
     // Perform truncated SVD
     Tensor u, v_dag;
@@ -624,11 +610,8 @@ TEST_CASE("CytnxTensor - trunc_svd operation") {
 
   SUBCASE("for_each on singular values with sqrt") {
     // Create a simple matrix for SVD
-    Tensor a;
-    tcapi::allocate(ctx, {3, 3}, a);
-
     std::mt19937 rng(123);
-    tcapi::random(ctx, {3, 3}, rng, a);
+    Tensor a = tcapi::random<Tensor>(ctx, {3, 3}, rng);
 
     // Perform SVD
     Tensor u, v_dag;
@@ -668,15 +651,14 @@ TEST_CASE("CytnxTensor - Miscellaneous functions") {
     CHECK_NOTHROW(tcapi::destroy_context(ctx));
   }
 
-  SUBCASE("to_container with row-major indexing") {
+  SUBCASE("to_range with row-major indexing") {
     using Tensor = tcapi::CytnxTensor<cytnx::cytnx_complex128>;
     using Elem = tcapi::tensor_traits<Tensor>::elem_t;
     tcapi::context_handle_t<Tensor> ctx;
     tcapi::create_context(ctx);
 
     // Create a 2x3 tensor with known values
-    Tensor tensor;
-    tcapi::allocate(ctx, {2, 3}, tensor);
+    Tensor tensor = tcapi::allocate<Tensor>(ctx, {2, 3});
 
     // Fill with values 1-6
     for (cytnx::cytnx_uint64 i = 0; i < 2; ++i) {
@@ -692,7 +674,7 @@ TEST_CASE("CytnxTensor - Miscellaneous functions") {
       return coors[0] * 3 + coors[1];  // row-major for 2x3 matrix
     };
 
-    CHECK_NOTHROW(tcapi::to_container(ctx, tensor, container.begin(), coors2idx));
+    CHECK_NOTHROW(tcapi::to_range(ctx, tensor, container.begin(), coors2idx));
 
     // Verify container contents
     CHECK(std::abs(container[0].real() - 1.0) < 1e-10);
@@ -703,15 +685,14 @@ TEST_CASE("CytnxTensor - Miscellaneous functions") {
     CHECK(std::abs(container[5].real() - 6.0) < 1e-10);
   }
 
-  SUBCASE("to_container with column-major indexing") {
+  SUBCASE("to_range with column-major indexing") {
     using Tensor = tcapi::CytnxTensor<cytnx::cytnx_double>;
     using Elem = tcapi::tensor_traits<Tensor>::elem_t;
     tcapi::context_handle_t<Tensor> ctx;
     tcapi::create_context(ctx);
 
     // Create a 2x2 tensor
-    Tensor tensor;
-    tcapi::allocate(ctx, {2, 2}, tensor);
+    Tensor tensor = tcapi::allocate<Tensor>(ctx, {2, 2});
 
     // Fill: [[1, 2], [3, 4]]
     tcapi::set_elem(ctx, tensor, {0, 0}, 1.0);
@@ -725,7 +706,7 @@ TEST_CASE("CytnxTensor - Miscellaneous functions") {
       return coors[1] * 2 + coors[0];  // column-major for 2x2 matrix
     };
 
-    CHECK_NOTHROW(tcapi::to_container(ctx, tensor, container.begin(), coors2idx));
+    CHECK_NOTHROW(tcapi::to_range(ctx, tensor, container.begin(), coors2idx));
 
     // Verify: column-major layout should be [1, 3, 2, 4]
     CHECK(std::abs(container[0] - 1.0) < 1e-10);
@@ -746,8 +727,7 @@ TEST_CASE_TEMPLATE("CytnxTensor - complex results keep single precision", Tensor
   tcapi::context_handle_t<Tensor> ctx;
   tcapi::create_context(ctx);
 
-  Tensor matrix;
-  tcapi::eye(ctx, 2, matrix);
+  Tensor matrix = tcapi::eye<Tensor>(ctx, 2);
 
   SUBCASE("eig") {
     CplxTensor eigenvals, eigenvecs;
@@ -793,8 +773,7 @@ TEST_CASE("CytnxTensor - Eigenvalue decomposition") {
 
   SUBCASE("eigvals - General matrix eigenvalues") {
     // Create a 2x2 non-symmetric matrix
-    Tensor matrix;
-    tcapi::allocate(ctx, {2, 2}, matrix);
+    Tensor matrix = tcapi::allocate<Tensor>(ctx, {2, 2});
 
     // Fill with test values: [[1, 2], [3, 4]] (non-symmetric)
     tcapi::set_elem(ctx, matrix, {0, 0}, Elem{1.0, 0.0});
@@ -821,8 +800,7 @@ TEST_CASE("CytnxTensor - Eigenvalue decomposition") {
 
   SUBCASE("eigvalsh - Symmetric matrix eigenvalues") {
     // Create a symmetric 2x2 matrix
-    Tensor matrix;
-    tcapi::allocate(ctx, {2, 2}, matrix);
+    Tensor matrix = tcapi::allocate<Tensor>(ctx, {2, 2});
 
     // Fill with symmetric values: [[2, 1], [1, 3]]
     tcapi::set_elem(ctx, matrix, {0, 0}, Elem{2.0, 0.0});
@@ -843,8 +821,7 @@ TEST_CASE("CytnxTensor - Eigenvalue decomposition") {
 
   SUBCASE("eig - General matrix eigendecomposition") {
     // Create identity matrix
-    Tensor matrix;
-    tcapi::eye(ctx, 2, matrix);
+    Tensor matrix = tcapi::eye<Tensor>(ctx, 2);
 
     CplxTensor eigenvals, eigenvecs;
 
@@ -865,8 +842,7 @@ TEST_CASE("CytnxTensor - Eigenvalue decomposition") {
 
   SUBCASE("eigh - Hermitian matrix eigendecomposition") {
     // Create identity matrix
-    Tensor matrix;
-    tcapi::eye(ctx, 2, matrix);
+    Tensor matrix = tcapi::eye<Tensor>(ctx, 2);
 
     RealTensor eigenvals;
     Tensor eigenvecs;
@@ -895,8 +871,7 @@ TEST_CASE("CytnxTensor - I/O Operations") {
 
   SUBCASE("save and load - double precision") {
     // Create a tensor with known values
-    Tensor original;
-    tcapi::allocate(ctx, {2, 3}, original);
+    Tensor original = tcapi::allocate<Tensor>(ctx, {2, 3});
     tcapi::set_elem(ctx, original, {0, 0}, 1.0);
     tcapi::set_elem(ctx, original, {0, 1}, 2.0);
     tcapi::set_elem(ctx, original, {0, 2}, 3.0);
@@ -909,8 +884,7 @@ TEST_CASE("CytnxTensor - I/O Operations") {
     tcapi::save(ctx, original, test_file);
 
     // Load from file
-    Tensor loaded;
-    tcapi::load(ctx, test_file, loaded);
+    Tensor loaded = tcapi::load<Tensor>(ctx, test_file);
 
     // Verify shape
     CHECK(tcapi::order(ctx, loaded) == 2);
@@ -936,8 +910,7 @@ TEST_CASE("CytnxTensor - I/O Operations") {
     tcapi::create_context(cctx);
 
     // Create a complex tensor
-    CTensor original;
-    tcapi::allocate(cctx, {2, 2}, original);
+    CTensor original = tcapi::allocate<CTensor>(cctx, {2, 2});
     tcapi::set_elem(cctx, original, {0, 0}, cytnx::cytnx_complex128(1.0, 2.0));
     tcapi::set_elem(cctx, original, {0, 1}, cytnx::cytnx_complex128(3.0, 4.0));
     tcapi::set_elem(cctx, original, {1, 0}, cytnx::cytnx_complex128(5.0, 6.0));
@@ -948,8 +921,7 @@ TEST_CASE("CytnxTensor - I/O Operations") {
     tcapi::save(cctx, original, test_file);
 
     // Load from file
-    CTensor loaded;
-    tcapi::load(cctx, test_file, loaded);
+    CTensor loaded = tcapi::load<CTensor>(cctx, test_file);
 
     // Verify shape
     CHECK(tcapi::order(cctx, loaded) == 2);

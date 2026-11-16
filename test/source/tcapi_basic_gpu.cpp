@@ -65,15 +65,14 @@ TEST_CASE("TCAPI GPU Tensor Operations") {
     tcapi::shape_t<tcapi::CytnxTensor<cytnx::cytnx_double>> shape = {2, 3};
     tcapi::CytnxTensor<cytnx::cytnx_double> tensor;
 
-    CHECK_NOTHROW(tcapi::zeros(ctx, shape, tensor));
+    CHECK_NOTHROW(tensor = tcapi::zeros<tcapi::CytnxTensor<cytnx::cytnx_double>>(ctx, shape));
     CHECK(tcapi::order(ctx, tensor) == 2);
     CHECK(tcapi::shape(ctx, tensor) == shape);
   }
 
   SUBCASE("GPU tensor element operations") {
     tcapi::shape_t<tcapi::CytnxTensor<cytnx::cytnx_double>> shape = {2, 2};
-    tcapi::CytnxTensor<cytnx::cytnx_double> tensor;
-    tcapi::zeros(ctx, shape, tensor);
+    auto tensor = tcapi::zeros<tcapi::CytnxTensor<cytnx::cytnx_double>>(ctx, shape);
 
     // Set and get element on GPU
     tcapi::elem_coors_t<tcapi::CytnxTensor<cytnx::cytnx_double>> coord = {0, 0};

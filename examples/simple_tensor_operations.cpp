@@ -48,7 +48,7 @@ void basic_tensor_operations() {
 
   std::cout << "  identity: " << shape(ctx, eye_tensor)[0] << "×" << shape(ctx, eye_tensor)[1]
             << std::endl;
-  std::cout << "  random: rank-" << rank(ctx, random_tensor) << " tensor" << std::endl;
+  std::cout << "  random: order-" << order(ctx, random_tensor) << " tensor" << std::endl;
 
   // Demonstrate element access
   std::cout << "\nElement access:" << std::endl;

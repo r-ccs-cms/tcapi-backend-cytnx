@@ -13,8 +13,7 @@ TEST_CASE("TCAPI Eigenvalue - invalid num_of_bds_as_row") {
   tcapi::create_context(ctx);
 
   SUBCASE("eigvals with num_of_bds_as_row=2 on 2D tensor should throw") {
-    tcapi::CytnxTensor<cytnx::cytnx_complex128> diagonal;
-    tcapi::eye(ctx, 3, diagonal);
+    auto diagonal = tcapi::eye<tcapi::CytnxTensor<cytnx::cytnx_complex128>>(ctx, 3);
     tcapi::set_elem(ctx, diagonal, {1, 1}, cytnx::cytnx_complex128(2.0, 0.0));
     tcapi::set_elem(ctx, diagonal, {2, 2}, cytnx::cytnx_complex128(3.0, 0.0));
 
@@ -23,8 +22,7 @@ TEST_CASE("TCAPI Eigenvalue - invalid num_of_bds_as_row") {
   }
 
   SUBCASE("eigvalsh with num_of_bds_as_row=2 on 2D tensor should throw") {
-    tcapi::CytnxTensor<cytnx::cytnx_complex128> symmetric;
-    tcapi::zeros(ctx, {2, 2}, symmetric);
+    auto symmetric = tcapi::zeros<tcapi::CytnxTensor<cytnx::cytnx_complex128>>(ctx, {2, 2});
     tcapi::set_elem(ctx, symmetric, {0, 0}, cytnx::cytnx_complex128(1.0, 0.0));
     tcapi::set_elem(ctx, symmetric, {0, 1}, cytnx::cytnx_complex128(2.0, 0.0));
     tcapi::set_elem(ctx, symmetric, {1, 0}, cytnx::cytnx_complex128(2.0, 0.0));
@@ -42,8 +40,7 @@ TEST_CASE("TCAPI Matrix exponential - complex64 dtype preservation") {
   tcapi::create_context(ctx);
 
   // Test that complex64 tensors preserve their dtype through anti-Hermitian path
-  tcapi::CytnxTensor<cytnx::cytnx_complex64> anti_herm_f;
-  tcapi::zeros(ctx, {2, 2}, anti_herm_f);
+  auto anti_herm_f = tcapi::zeros<tcapi::CytnxTensor<cytnx::cytnx_complex64>>(ctx, {2, 2});
   tcapi::set_elem(ctx, anti_herm_f, {0, 1}, cytnx::cytnx_complex64(1.0f, 0.0f));
   tcapi::set_elem(ctx, anti_herm_f, {1, 0}, cytnx::cytnx_complex64(-1.0f, 0.0f));
 
@@ -71,8 +68,7 @@ TEST_CASE("TCAPI Matrix exponential - in-place real dtype preservation (double)"
   tcapi::context_handle_t<tcapi::CytnxTensor<cytnx::cytnx_double>> ctx;
   tcapi::create_context(ctx);
 
-  tcapi::CytnxTensor<cytnx::cytnx_double> diagonal;
-  tcapi::zeros(ctx, {2, 2}, diagonal);
+  auto diagonal = tcapi::zeros<tcapi::CytnxTensor<cytnx::cytnx_double>>(ctx, {2, 2});
   tcapi::set_elem(ctx, diagonal, {0, 0}, 1.0);
   tcapi::set_elem(ctx, diagonal, {1, 1}, 2.0);
 
@@ -97,8 +93,7 @@ TEST_CASE("TCAPI Matrix exponential - in-place real dtype preservation (float)")
   tcapi::context_handle_t<tcapi::CytnxTensor<cytnx::cytnx_float>> ctx;
   tcapi::create_context(ctx);
 
-  tcapi::CytnxTensor<cytnx::cytnx_float> anti_herm;
-  tcapi::zeros(ctx, {2, 2}, anti_herm);
+  auto anti_herm = tcapi::zeros<tcapi::CytnxTensor<cytnx::cytnx_float>>(ctx, {2, 2});
   tcapi::set_elem(ctx, anti_herm, {0, 1}, 1.0f);
   tcapi::set_elem(ctx, anti_herm, {1, 0}, -1.0f);
 
@@ -112,8 +107,7 @@ TEST_CASE("TCAPI Matrix inverse - singular matrix error") {
   tcapi::context_handle_t<tcapi::CytnxTensor<cytnx::cytnx_complex128>> ctx;
   tcapi::create_context(ctx);
 
-  tcapi::CytnxTensor<cytnx::cytnx_complex128> singular;
-  tcapi::zeros(ctx, {2, 2}, singular);
+  auto singular = tcapi::zeros<tcapi::CytnxTensor<cytnx::cytnx_complex128>>(ctx, {2, 2});
   tcapi::set_elem(ctx, singular, {0, 0}, cytnx::cytnx_complex128(1.0, 0.0));
   tcapi::set_elem(ctx, singular, {0, 1}, cytnx::cytnx_complex128(2.0, 0.0));
   tcapi::set_elem(ctx, singular, {1, 0}, cytnx::cytnx_complex128(2.0, 0.0));
@@ -136,8 +130,7 @@ template <typename Ten> std::pair<cytnx::cytnx_uint64, tcapi::real_t<Ten>> trunc
     tcapi::context_handle_t<Ten>& ctx, const std::vector<tcapi::real_t<Ten>>& svs, int chi_max,
     double target) {
   const auto n = static_cast<cytnx::cytnx_uint64>(svs.size());
-  Ten a;
-  tcapi::zeros(ctx, {n, n}, a);
+  Ten a = tcapi::zeros<Ten>(ctx, {n, n});
   for (cytnx::cytnx_uint64 i = 0; i < n; ++i) {
     tcapi::set_elem(ctx, a, {i, i}, svs[i]);
   }
@@ -308,8 +301,7 @@ TEST_CASE("TCAPI SVD - large matrix exercises gesdd path (64x64 identity)") {
 
   // n == kGesddMinDim: the smallest dimension that takes the gesdd branch.
   constexpr int n = 64;
-  Ten a;
-  tcapi::eye(ctx, n, a);
+  Ten a = tcapi::eye<Ten>(ctx, n);
 
   SUBCASE("full svd: identity has 64 singular values all equal to 1") {
     Ten u, v_dag;

@@ -108,8 +108,7 @@ tcapi::context_handle_t<Tensor> ctx;
 tcapi::create_context(ctx);
 
 // Create and allocate tensor
-Tensor tensor;
-tcapi::allocate(ctx, {100, 100}, tensor);
+Tensor tensor = tcapi::allocate<Tensor>(ctx, {100, 100});
 
 // Direct element access
 auto elem = tcapi::get_elem(ctx, tensor, {0, 0});
@@ -197,11 +196,7 @@ tcapi::context_handle_t<Tensor> ctx;
 tcapi::create_context(ctx);
 
 // Allocate tensor with shape
-Tensor tensor;
-tcapi::allocate(ctx, {3, 4, 5}, tensor);
-
-// Or use the return-value version
-auto tensor2 = tcapi::allocate<Tensor>(ctx, {2, 3});
+Tensor tensor = tcapi::allocate<Tensor>(ctx, {3, 4, 5});
 ```
 
 ### Information and Access
@@ -295,11 +290,11 @@ using Tensor = tcapi::CytnxTensor<cytnx::cytnx_complex128>;
 show(ctx, tensor);  // Print to stdout
 
 // Compare tensors
-bool equal = eq(ctx, tensor1, tensor2, 1e-10);  // With tolerance
+bool equal = close(ctx, tensor1, tensor2, 1e-10);  // With tolerance
 
 // Convert to STL containers
 std::vector<std::complex<double>> container(total_elements);
-to_container(ctx, tensor, container.begin(), coordinate_mapping_function);
+to_range(ctx, tensor, container.begin(), coordinate_mapping_function);
 
 // Convert between contexts (e.g., CPU ↔ GPU) or element types (casting complex elements to real throws)
 Tensor gpu_tensor;
@@ -310,7 +305,7 @@ convert(ctx_cpu, cpu_tensor, ctx_gpu, gpu_tensor);
 
 ### Custom Coordinate Mappings
 
-When using `to_container` or `assign_from_container`, you need to provide a coordinate mapping function:
+When using `to_range` or `assign_from_range`, you need to provide a coordinate mapping function:
 
 ```cpp
 using Tensor = tcapi::CytnxTensor<cytnx::cytnx_complex128>;
@@ -335,8 +330,7 @@ tcapi::context_handle_t<Tensor> ctx;
 tcapi::create_context(ctx);
 
 // Create complex tensor
-Tensor complex_tensor;
-tcapi::allocate(ctx, {2, 2}, complex_tensor);
+Tensor complex_tensor = tcapi::allocate<Tensor>(ctx, {2, 2});
 
 // Set complex values using Elem type alias (recommended)
 complex_tensor.backend.at<Elem>({0, 0}) = Elem{1.0, 2.0};
@@ -482,8 +476,7 @@ int main() {
     tcapi::create_context(ctx);
 
     // Create tensor
-    Tensor tensor;
-    tcapi::allocate(ctx, {100, 100}, tensor);
+    Tensor tensor = tcapi::allocate<Tensor>(ctx, {100, 100});
 
     // Initialize with random-like values
     for (size_t i = 0; i < 100; ++i) {
@@ -534,8 +527,7 @@ int main() {
     tcapi::create_context(ctx);
 
     // Create and initialize tensor
-    Tensor data;
-    tcapi::allocate(ctx, {1000}, data);
+    Tensor data = tcapi::allocate<Tensor>(ctx, {1000});
 
     // Fill with varying values
     for (size_t i = 0; i < 1000; ++i) {
