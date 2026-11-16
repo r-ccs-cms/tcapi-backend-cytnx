@@ -151,7 +151,7 @@ namespace tcapi {
   // Void overload (reserved for future GPU support)
   template <typename TenT> void get_elem(context_handle_t<TenT>& ctx, const TenT& a,
                                          const elem_coors_t<TenT>& coors, elem_t<TenT>& elem) {
-    // Runtime warning (emitted once per program execution)
+    // Runtime warning (emitted once per element type)
     static bool warned = false;
     if (!warned) {
       // Check suppression flag
@@ -994,10 +994,11 @@ namespace tcapi {
               target_trunc_err);
   }
 
-  // Rejects a floating-point chi_max. The (chi_max, s_min) form above would convert it to
-  // bond_dim_t, so a call shaped (target_trunc_err, s_min), a form TCAPI does not declare,
-  // would run with chi_max = floor(target_trunc_err) instead of failing to compile. Pass
-  // chi_max as bond_dim_t, or use the (chi_max, s_min, chi_min, target_trunc_err) form below.
+  // Rejects a floating-point chi_max in the 9-argument shape. The (chi_max, s_min) form above
+  // would convert it to bond_dim_t, so a call shaped (target_trunc_err, s_min), a form TCAPI
+  // does not declare, would run with target_trunc_err truncated to an integer as chi_max
+  // instead of failing to compile. Pass chi_max as bond_dim_t, or use the
+  // (chi_max, s_min, chi_min, target_trunc_err) form below.
   template <typename TenT, typename TargetTruncErr, typename SMin,
             std::enable_if_t<std::is_floating_point_v<TargetTruncErr>, int> = 0>
   void trunc_svd(  // not (target_trunc_err, s_min): pass chi_max as bond_dim_t
@@ -1848,7 +1849,7 @@ namespace tcapi {
     detail::for_each_recursive_const_typed(in, std::forward<Func>(f), 0, coords, shape);
   }
 
-  // move - move tensor contents (out-of-place), invalidates source
+  // move - move tensor contents, invalidates source
   template <typename TenT> TenT move(context_handle_t<TenT>& ctx, TenT& from) {
     TenT result;
     result.backend = std::move(from.backend);
@@ -1881,7 +1882,7 @@ namespace tcapi {
     contract(ctx, a, bd_labs_a, b, bd_labs_b, c, bd_labs_c);
   }
 
-  // Forward declarations for allocate (out-of-place) specializations
+  // Forward declarations for allocate specializations
   template <> CytnxTensor<cytnx::cytnx_double> allocate<CytnxTensor<cytnx::cytnx_double>>(
       context_handle_t<CytnxTensor<cytnx::cytnx_double>>& ctx,
       const shape_t<CytnxTensor<cytnx::cytnx_double>>& shape);
@@ -1895,7 +1896,7 @@ namespace tcapi {
       context_handle_t<CytnxTensor<cytnx::cytnx_complex64>>& ctx,
       const shape_t<CytnxTensor<cytnx::cytnx_complex64>>& shape);
 
-  // Forward declarations for fill (out-of-place) specializations
+  // Forward declarations for fill specializations
   template <> CytnxTensor<cytnx::cytnx_double> fill<CytnxTensor<cytnx::cytnx_double>>(
       context_handle_t<CytnxTensor<cytnx::cytnx_double>>& ctx,
       const shape_t<CytnxTensor<cytnx::cytnx_double>>& shape,
@@ -1913,7 +1914,7 @@ namespace tcapi {
       const shape_t<CytnxTensor<cytnx::cytnx_complex64>>& shape,
       elem_t<CytnxTensor<cytnx::cytnx_complex64>> value);
 
-  // Explicit specializations for zeros (out-of-place) for all supported element types
+  // Explicit specializations for zeros for all supported element types
   template <> inline CytnxTensor<cytnx::cytnx_double> zeros<CytnxTensor<cytnx::cytnx_double>>(
       context_handle_t<CytnxTensor<cytnx::cytnx_double>>& ctx,
       const shape_t<CytnxTensor<cytnx::cytnx_double>>& shape) {
@@ -1939,7 +1940,7 @@ namespace tcapi {
     return fill<CytnxTensor<cytnx::cytnx_complex64>>(ctx, shape, std::complex<float>(0.0f, 0.0f));
   }
 
-  // Explicit specializations for fill (out-of-place) for all supported element types
+  // Explicit specializations for fill for all supported element types
   template <> inline CytnxTensor<cytnx::cytnx_double> fill<CytnxTensor<cytnx::cytnx_double>>(
       context_handle_t<CytnxTensor<cytnx::cytnx_double>>& ctx,
       const shape_t<CytnxTensor<cytnx::cytnx_double>>& shape,
@@ -1993,7 +1994,7 @@ namespace tcapi {
     return result;
   }
 
-  // Explicit specializations for allocate (out-of-place) - implementations
+  // Explicit specializations for allocate - implementations
   template <> inline CytnxTensor<cytnx::cytnx_double> allocate<CytnxTensor<cytnx::cytnx_double>>(
       context_handle_t<CytnxTensor<cytnx::cytnx_double>>& ctx,
       const shape_t<CytnxTensor<cytnx::cytnx_double>>& shape) {
@@ -2052,7 +2053,7 @@ namespace tcapi {
     return result;
   }
 
-  // Explicit specializations for eye (out-of-place) for all supported element types
+  // Explicit specializations for eye for all supported element types
   template <> inline CytnxTensor<cytnx::cytnx_double> eye<CytnxTensor<cytnx::cytnx_double>>(
       context_handle_t<CytnxTensor<cytnx::cytnx_double>>& ctx,
       const bond_dim_t<CytnxTensor<cytnx::cytnx_double>> N) {

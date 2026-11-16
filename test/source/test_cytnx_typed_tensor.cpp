@@ -1138,21 +1138,20 @@ TEST_CASE_TEMPLATE("CytnxTensor - close compares the largest difference", Tensor
   tcapi::destroy_context(ctx);
 }
 
-TEST_CASE("get_elem void overload produces runtime warning") {
+TEST_CASE("get_elem void overload writes the element to its output argument") {
   using Tensor = tcapi::CytnxTensor<cytnx::cytnx_double>;
   using Real = tcapi::real_t<Tensor>;
 
   tcapi::CytnxContextHandle ctx;
   tcapi::create_context(ctx);
 
-  SUBCASE("void overload triggers runtime warning") {
-    auto tensor = tcapi::zeros<Tensor>(ctx, {2, 2});
-    Real elem;
+  auto tensor = tcapi::zeros<Tensor>(ctx, {2, 2});
+  tcapi::set_elem(ctx, tensor, {1, 0}, 1.5);
+  Real elem = 0.0;
 
-    // This overload prints a warning at run time, once per program.
-    // Warning can be suppressed with: export TCAPI_SUPPRESS_FUTURE_API_WARNING=1
-    tcapi::get_elem(ctx, tensor, {0, 0}, elem);
+  // This overload also prints a warning at run time, once per element type.
+  // Warning can be suppressed with: export TCAPI_SUPPRESS_FUTURE_API_WARNING=1
+  tcapi::get_elem(ctx, tensor, {1, 0}, elem);
 
-    CHECK(elem == 0.0);
-  }
+  CHECK(elem == 1.5);
 }
