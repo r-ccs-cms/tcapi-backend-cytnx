@@ -172,6 +172,31 @@ int main() {
 g++ -std=c++17 -I<tcapi-install>/include your_code.cpp -lTCAPI -lcytnx
 ```
 
+## Backend Behavior
+
+The functions follow the TCAPI specification linked above. This section covers behavior specific to this backend.
+
+### Contexts
+
+`tcapi::create_context(ctx)` binds `ctx` to GPU 0 when Cytnx reports a GPU, and to the CPU otherwise. `tcapi::create_context(ctx, gpu_id)` binds it to another GPU, and throws when Cytnx reports no GPU or `gpu_id` is out of range.
+
+### Copying and Moving
+
+`CytnxTensor` cannot be copied: `Tensor b = a;` and `b = a;` do not compile, because TCAPI V1 does not require tensors to be copyable. Duplicate a tensor with `tcapi::copy`, which makes a deep copy, and transfer one with `tcapi::move`, which leaves the source as `Tensor{}`:
+
+```cpp
+Tensor b = tcapi::copy<Tensor>(ctx, a);  // b has its own storage
+Tensor c = tcapi::move<Tensor>(ctx, b);  // c takes b's storage; b is now Tensor{}
+```
+
+A plain `std::move` also compiles, but the moved-from tensor keeps sharing storage with the tensor it was moved into, so a later write through one is visible through the other. Use `tcapi::move` when the source will be used again.
+
+### Saving and Loading
+
+`tcapi::load` reads a file as the element type it was saved with, and throws `std::runtime_error` for any other element type. To get another element type, load the saved one and change it: `tcapi::convert` casts real to complex and between precisions, and `tcapi::real` or `tcapi::imag` take a complex tensor to a real one.
+
+`tcapi::save` of a default-constructed tensor throws `std::runtime_error` before anything is written, so an existing file at the path is left as it was.
+
 ## Documentation
 
 ```bash
