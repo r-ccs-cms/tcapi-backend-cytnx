@@ -2,16 +2,18 @@
 
 namespace tcapi {
 
-  // Only the CytnxContextHandle specializations below have non-deleted definitions. Deleting the
-  // primary templates makes a call that resolves to any other specialization a compile error
-  // instead of an undefined reference at link time. A deleted definition must be the first
-  // declaration of its template, so the deletions open this header.
+  // In this library, only the CytnxContextHandle specializations below have non-deleted
+  // definitions. Deleting the primary templates makes a call that resolves to any other
+  // specialization the library does not define a compile error instead of an undefined reference
+  // at link time. A deleted definition must be the first declaration of its template, so the
+  // deletions open this header.
 
   /**
    * @brief Create context handle (in-place version)
    *
-   * @tparam ContextHandleT Context handle type. CytnxContextHandle is the only one accepted: a
-   * call with any other template argument, deduced or named, does not compile.
+   * @tparam ContextHandleT Context handle type. This library defines the template for
+   * CytnxContextHandle only: with any other template argument, deduced or named, a call does not
+   * compile unless the program declares its own explicit specialization for that type.
    * @param ctx Context handle to initialize
    */
   template <typename ContextHandleT> void create_context(ContextHandleT& ctx) = delete;
@@ -19,8 +21,9 @@ namespace tcapi {
   /**
    * @brief Destroy context handle
    *
-   * @tparam ContextHandleT Context handle type. CytnxContextHandle is the only one accepted: a
-   * call with any other template argument, deduced or named, does not compile.
+   * @tparam ContextHandleT Context handle type. This library defines the template for
+   * CytnxContextHandle only: with any other template argument, deduced or named, a call does not
+   * compile unless the program declares its own explicit specialization for that type.
    * @param ctx Context handle to destroy
    */
   template <typename ContextHandleT> void destroy_context(ContextHandleT& ctx) = delete;
@@ -31,7 +34,12 @@ namespace tcapi {
   // specializations are declared ahead of the class. Declared after it, they would follow the
   // friend declaration that names one of them, and clang then rejects create_context(ctx) on a
   // handle as a call to the deleted primary.
+
+  /// @brief Create context handle (in-place version), targeting GPU 0 when Cytnx reports a GPU
+  /// and the CPU otherwise
   template <> void create_context(CytnxContextHandle& ctx);
+
+  /// @brief Destroy context handle
   template <> void destroy_context(CytnxContextHandle& ctx);
 
   void create_context(CytnxContextHandle& ctx, int gpu_id);
