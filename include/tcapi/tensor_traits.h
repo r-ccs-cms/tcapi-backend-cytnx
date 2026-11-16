@@ -37,7 +37,7 @@ namespace tcapi {
    * context_handle_t<TenT>, and so drops out of overload resolution for such an X; an unqualified
    * call that argument-dependent lookup brings into tcapi can then still resolve to a caller's
    * own function of the same name. A new template of that kind must name one too, and its name
-   * joins the lists that test/source/test_adl_user_overloads.cpp checks this against.
+   * joins ADL_TENSOR_ARG_NAMES or ADL_LIST_ARG_NAMES, the lists the tests check this against.
    *
    * @tparam TenT The tensor type from the underlying library
    */
