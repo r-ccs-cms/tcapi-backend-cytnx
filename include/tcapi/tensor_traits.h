@@ -11,7 +11,7 @@
 namespace tcapi {
 
   /**
-   * @brief Type information and context handling for a tensor type
+   * @brief Associated types of a tensor type
    *
    * Each tensor library implementation specializes tensor_traits for its tensor types. A
    * specialization defines these member types:
@@ -30,13 +30,6 @@ namespace tcapi {
    * - cplx_t: Type for complex floating point numbers
    * - cplx_ten_t: Type for complex tensors
    * - context_handle_t: Type for library context handle
-   *
-   * The primary template is declared but not defined, so naming a member of tensor_traits<X> for
-   * an X with no specialization is a substitution failure. A tcapi function template that deduces
-   * its tensor type from an argument names such a member in its signature, at least through
-   * context_handle_t<TenT>, and so drops out of overload resolution for such an X; an unqualified
-   * call that argument-dependent lookup brings into tcapi can then still resolve to a caller's
-   * own function of the same name. A new template of that kind must name one too.
    *
    * @tparam TenT The tensor type from the underlying library
    */
