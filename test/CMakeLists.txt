@@ -20,6 +20,9 @@ if (doctest_ADDED)
 endif()
 
 if(NOT TARGET TCAPI::TCAPI)
+  # test/ is configured on its own, so it is this repository's top-level build
+  # and tcapi_enable_warnings applies, although TCAPI is not the top level.
+  set(TCAPI_ENABLE_WARNINGS ON)
   CPMAddPackage(NAME TCAPI SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
 endif()
 

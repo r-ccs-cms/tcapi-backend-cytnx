@@ -286,12 +286,13 @@ target_compile_options(${PROJECT_NAME} PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>
 
 # Compiler warnings are this repository's development policy, not a usage
 # requirement: they are added PRIVATE, so no target that links TCAPI inherits
-# them. They apply only when this repository is the top-level build, i.e. it is
-# configured from this directory or from test/ on its own. A project that adds
-# this repository as a subdirectory compiles it with its own flags, and the
-# function does nothing there.
+# them. They apply when TCAPI is the top-level project, or when
+# TCAPI_ENABLE_WARNINGS is ON, as test/ sets it when configured on its own. A
+# project that adds this repository as a subdirectory compiles it with its own
+# flags, and the function does nothing there unless that project sets
+# TCAPI_ENABLE_WARNINGS to ON.
 function(tcapi_enable_warnings target)
-  if(NOT (TCAPI_IS_TOP_LEVEL OR CMAKE_SOURCE_DIR STREQUAL "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/test"))
+  if(NOT (TCAPI_IS_TOP_LEVEL OR TCAPI_ENABLE_WARNINGS))
     return()
   endif()
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
