@@ -31,10 +31,13 @@ namespace tcapi {
    * - cplx_ten_t: Type for complex tensors
    * - context_handle_t: Type for library context handle
    *
-   * The primary template is declared but not defined. A tcapi function template whose tensor
-   * type is deduced as a type with no specialization is therefore removed from overload
-   * resolution by substitution failure, so an unqualified call that argument-dependent lookup
-   * brings into tcapi can still resolve to a caller's own function of the same name.
+   * The primary template is declared but not defined, so naming a member of tensor_traits<X> for
+   * an X with no specialization is a substitution failure. A tcapi function template that deduces
+   * its tensor type from an argument names such a member in its signature, at least through
+   * context_handle_t<TenT>, and so drops out of overload resolution for such an X; an unqualified
+   * call that argument-dependent lookup brings into tcapi can then still resolve to a caller's
+   * own function of the same name. A new template of that kind must name one too, and its name
+   * joins the lists that test/source/test_adl_user_overloads.cpp checks this against.
    *
    * @tparam TenT The tensor type from the underlying library
    */
