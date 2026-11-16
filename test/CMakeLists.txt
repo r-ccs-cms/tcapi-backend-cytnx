@@ -22,8 +22,8 @@ endif()
 # Configured on its own, this test project is the top-level build of this
 # repository, so the warnings default to ON as they do for a configure from the
 # root, although TCAPI added below is not the top-level project.
-if(PROJECT_IS_TOP_LEVEL AND NOT DEFINED TCAPI_ENABLE_WARNINGS)
-  set(TCAPI_ENABLE_WARNINGS ON)
+if(PROJECT_IS_TOP_LEVEL)
+  option(TCAPI_ENABLE_WARNINGS "Compile TCAPI, its examples and its tests with this repository's warning flags" ON)
 endif()
 
 if(NOT TARGET TCAPI::TCAPI)
