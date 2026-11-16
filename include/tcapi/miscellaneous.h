@@ -9,32 +9,12 @@
 namespace tcapi {
 
   /**
-   * @brief Create context handle (in-place version)
-   *
-   * An argument whose deduced type is not CytnxContextHandle selects the deleted primary
-   * template and does not compile.
-   *
-   * @param ctx Context handle to initialize
-   */
-  template <> void create_context(CytnxContextHandle& ctx);
-
-  /**
    * @brief Create context handle with GPU device (in-place version)
    *
    * @param ctx Context handle to initialize
    * @param gpu_id GPU device ID (0-based)
    */
   void create_context(CytnxContextHandle& ctx, int gpu_id);
-
-  /**
-   * @brief Destroy context handle
-   *
-   * An argument whose deduced type is not CytnxContextHandle selects the deleted primary
-   * template and does not compile.
-   *
-   * @param ctx Context handle to destroy
-   */
-  template <> void destroy_context(CytnxContextHandle& ctx);
 
   /**
    * @brief Copy tensor elements to a range

@@ -6,13 +6,30 @@ namespace tcapi {
   // definitions. Deleting the primary templates turns a call whose argument deduces another type
   // into a compile error instead of an undefined reference at link time. A deleted definition
   // must be the first declaration of its template, so the deletions open this header.
-  // tcapi/miscellaneous.h, the only other header that declares these names, reaches this one
-  // through tcapi/cytnx_tensor_traits.h before its own declarations.
   template <typename ContextHandleT> void create_context(ContextHandleT& ctx) = delete;
   template <typename ContextHandleT> void destroy_context(ContextHandleT& ctx) = delete;
   class CytnxContextHandle;
+
+  /**
+   * @brief Create context handle (in-place version)
+   *
+   * An argument whose deduced type is not CytnxContextHandle selects the deleted primary
+   * template and does not compile.
+   *
+   * @param ctx Context handle to initialize
+   */
   template <> void create_context(CytnxContextHandle& ctx);
+
+  /**
+   * @brief Destroy context handle
+   *
+   * An argument whose deduced type is not CytnxContextHandle selects the deleted primary
+   * template and does not compile.
+   *
+   * @param ctx Context handle to destroy
+   */
   template <> void destroy_context(CytnxContextHandle& ctx);
+
   void create_context(CytnxContextHandle& ctx, int gpu_id);
 
   /**
