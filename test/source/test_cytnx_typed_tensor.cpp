@@ -145,31 +145,52 @@ TEST_CASE_TEMPLATE_DEFINE("CytnxTensor - Move-only", Tensor, cytnx_tensor_move_o
 
 TEST_CASE_TEMPLATE_APPLY(cytnx_tensor_move_only, tcapi::supported_ten_types_t);
 
-template <typename Void, template <typename...> class Op, typename... Args> struct detector
-    : std::false_type {};
+namespace {
 
-template <template <typename...> class Op, typename... Args>
-struct detector<std::void_t<Op<Args...>>, Op, Args...> : std::true_type {};
+  template <typename Void, template <typename...> class Op, typename... Args> struct detector
+      : std::false_type {};
 
-// detected<Op, Args...> holds when Op<Args...> is well-formed.
-template <template <typename...> class Op, typename... Args> using detected
-    = detector<void, Op, Args...>;
+  template <template <typename...> class Op, typename... Args>
+  struct detector<std::void_t<Op<Args...>>, Op, Args...> : std::true_type {};
 
-// create_context<Arg>(ctx) and destroy_context<Arg>(ctx) for an lvalue ctx of type
-// context_handle_t<Ten>.
-template <typename Arg, typename Ten> using create_context_named_call
-    = decltype(tcapi::create_context<Arg>(std::declval<tcapi::context_handle_t<Ten>&>()));
+  // detected<Op, Args...> holds when Op<Args...> is well-formed.
+  template <template <typename...> class Op, typename... Args> using detected
+      = detector<void, Op, Args...>;
 
-template <typename Arg, typename Ten> using destroy_context_named_call
-    = decltype(tcapi::destroy_context<Arg>(std::declval<tcapi::context_handle_t<Ten>&>()));
+  // create_context<Arg>(ctx) and destroy_context<Arg>(ctx) for an lvalue ctx of type
+  // context_handle_t<Ten>.
+  template <typename Arg, typename Ten> using create_context_named_call
+      = decltype(tcapi::create_context<Arg>(std::declval<tcapi::context_handle_t<Ten>&>()));
 
-// create_context(ctx) and destroy_context(ctx) for an lvalue ctx of type Arg, with the template
-// argument deduced.
-template <typename Arg> using create_context_deduced_call
-    = decltype(tcapi::create_context(std::declval<Arg&>()));
+  template <typename Arg, typename Ten> using destroy_context_named_call
+      = decltype(tcapi::destroy_context<Arg>(std::declval<tcapi::context_handle_t<Ten>&>()));
 
-template <typename Arg> using destroy_context_deduced_call
-    = decltype(tcapi::destroy_context(std::declval<Arg&>()));
+  // create_context<Arg>(a) and destroy_context<Arg>(a) for an lvalue a of type Arg.
+  template <typename Arg> using create_context_named_own_call
+      = decltype(tcapi::create_context<Arg>(std::declval<Arg&>()));
+
+  template <typename Arg> using destroy_context_named_own_call
+      = decltype(tcapi::destroy_context<Arg>(std::declval<Arg&>()));
+
+  // create_context(ctx) and destroy_context(ctx) for an lvalue ctx of type Arg, with the template
+  // argument deduced.
+  template <typename Arg> using create_context_deduced_call
+      = decltype(tcapi::create_context(std::declval<Arg&>()));
+
+  template <typename Arg> using destroy_context_deduced_call
+      = decltype(tcapi::destroy_context(std::declval<Arg&>()));
+
+  // A const handle deduces const CytnxContextHandle, and a class derived from the handle deduces
+  // itself, since deduction against ContextHandleT& keeps the cv-qualifier and does not convert to
+  // a base. Neither is the CytnxContextHandle specialization, so both reach the deleted primary.
+  struct DerivedContextHandle : tcapi::CytnxContextHandle {};
+
+  static_assert(!detected<create_context_deduced_call, const tcapi::CytnxContextHandle>::value);
+  static_assert(!detected<destroy_context_deduced_call, const tcapi::CytnxContextHandle>::value);
+  static_assert(!detected<create_context_deduced_call, DerivedContextHandle>::value);
+  static_assert(!detected<destroy_context_deduced_call, DerivedContextHandle>::value);
+
+}  // namespace
 
 // TCAPI V1 declares create_context and destroy_context over the handle type, ContextHandleT, so
 // the handle type is the template argument a caller may name, and a tensor type is not.
@@ -186,8 +207,9 @@ TEST_CASE_TEMPLATE_DEFINE(
 TEST_CASE_TEMPLATE_APPLY(context_routines_explicit_argument, tcapi::supported_ten_types_t);
 
 // Of the create_context and destroy_context templates, only the CytnxContextHandle
-// specializations have non-deleted definitions, so a call whose argument deduces another type has
-// to be rejected when it is compiled, not left as an undefined reference.
+// specializations have non-deleted definitions, so a call on a tensor, whether the tensor type is
+// deduced or named as the template argument, has to be rejected when it is compiled, not left as
+// an undefined reference.
 TEST_CASE_TEMPLATE_DEFINE("CytnxTensor - context routines reject a tensor argument", Tensor,
                           context_routines_reject_tensor) {
   using Handle = tcapi::context_handle_t<Tensor>;
@@ -195,19 +217,11 @@ TEST_CASE_TEMPLATE_DEFINE("CytnxTensor - context routines reject a tensor argume
   static_assert(detected<destroy_context_deduced_call, Handle>::value);
   static_assert(!detected<create_context_deduced_call, Tensor>::value);
   static_assert(!detected<destroy_context_deduced_call, Tensor>::value);
+  static_assert(!detected<create_context_named_own_call, Tensor>::value);
+  static_assert(!detected<destroy_context_named_own_call, Tensor>::value);
 }
 
 TEST_CASE_TEMPLATE_APPLY(context_routines_reject_tensor, tcapi::supported_ten_types_t);
-
-// A const handle deduces const CytnxContextHandle, and a class derived from the handle deduces
-// itself, since deduction against ContextHandleT& keeps the cv-qualifier and does not convert to a
-// base. Neither is the CytnxContextHandle specialization, so both reach the deleted primary.
-struct DerivedContextHandle : tcapi::CytnxContextHandle {};
-
-static_assert(!detected<create_context_deduced_call, const tcapi::CytnxContextHandle>::value);
-static_assert(!detected<destroy_context_deduced_call, const tcapi::CytnxContextHandle>::value);
-static_assert(!detected<create_context_deduced_call, DerivedContextHandle>::value);
-static_assert(!detected<destroy_context_deduced_call, DerivedContextHandle>::value);
 
 TEST_CASE("CytnxTensor - Construction") {
   SUBCASE("Default construction") {
