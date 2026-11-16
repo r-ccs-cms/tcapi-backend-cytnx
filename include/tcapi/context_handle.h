@@ -2,10 +2,12 @@
 
 namespace tcapi {
 
-  // Only the CytnxContextHandle specializations below have definitions. Deleting the primary
-  // templates turns a call whose argument deduces another type into a compile error instead of an
-  // undefined reference at link time. A deleted definition must be the first declaration, so it
-  // stays here, ahead of the friend declaration in CytnxContextHandle.
+  // Only the CytnxContextHandle specializations below have non-deleted definitions. Deleting the
+  // primary templates turns a call whose argument deduces another type into a compile error
+  // instead of an undefined reference at link time. A deleted definition must be the first
+  // declaration of its template, and the friend declaration in CytnxContextHandle redeclares
+  // create_context, so that deletion stays here, ahead of the class. The destroy_context deletion
+  // stays beside it.
   template <typename ContextHandleT> void create_context(ContextHandleT& ctx) = delete;
   template <typename ContextHandleT> void destroy_context(ContextHandleT& ctx) = delete;
   class CytnxContextHandle;
