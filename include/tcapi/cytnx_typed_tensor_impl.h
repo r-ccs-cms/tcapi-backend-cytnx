@@ -2306,22 +2306,4 @@ namespace tcapi {
     out.backend = result.reshape(original_shape);
   }
 
-  // ===================================================================
-  // Context Management
-  // ===================================================================
-
-  // Context management for TenT
-  template <typename TenT> void create_context(context_handle_t<TenT>& ctx) {
-    // Use GPU 0 if available, otherwise fall back to CPU
-    if (cytnx::Device.Ngpus > 0) {
-      ctx = cytnx::Device.cuda;
-    } else {
-      ctx = cytnx::Device.cpu;
-    }
-  }
-
-  template <typename TenT> void destroy_context(context_handle_t<TenT>& ctx) {
-    // No-op for Cytnx
-  }
-
 }  // namespace tcapi
