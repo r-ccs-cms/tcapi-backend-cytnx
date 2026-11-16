@@ -172,15 +172,7 @@ namespace {
   template <typename Arg> using destroy_context_deduced_call
       = decltype(tcapi::destroy_context(std::declval<Arg&>()));
 
-  // A const handle deduces const CytnxContextHandle, and a class derived from the handle deduces
-  // itself, since deduction against ContextHandleT& keeps the cv-qualifier and does not convert to
-  // a base. Neither is the CytnxContextHandle specialization, so both reach the deleted primary.
   struct DerivedContextHandle : tcapi::CytnxContextHandle {};
-
-  static_assert(!detected<create_context_deduced_call, const tcapi::CytnxContextHandle>::value);
-  static_assert(!detected<destroy_context_deduced_call, const tcapi::CytnxContextHandle>::value);
-  static_assert(!detected<create_context_deduced_call, DerivedContextHandle>::value);
-  static_assert(!detected<destroy_context_deduced_call, DerivedContextHandle>::value);
 
 }  // namespace
 
@@ -214,6 +206,16 @@ TEST_CASE_TEMPLATE_DEFINE("CytnxTensor - context routines reject a tensor argume
 }
 
 TEST_CASE_TEMPLATE_APPLY(context_routines_reject_tensor, tcapi::supported_ten_types_t);
+
+// A const handle deduces const CytnxContextHandle, and a class derived from the handle deduces
+// itself, since deduction against ContextHandleT& keeps the cv-qualifier and does not convert to a
+// base. Neither is the CytnxContextHandle specialization, so both reach the deleted primary.
+TEST_CASE("CytnxTensor - context routines reject a const or derived handle") {
+  static_assert(!detected<create_context_deduced_call, const tcapi::CytnxContextHandle>::value);
+  static_assert(!detected<destroy_context_deduced_call, const tcapi::CytnxContextHandle>::value);
+  static_assert(!detected<create_context_deduced_call, DerivedContextHandle>::value);
+  static_assert(!detected<destroy_context_deduced_call, DerivedContextHandle>::value);
+}
 
 TEST_CASE("CytnxTensor - Construction") {
   SUBCASE("Default construction") {
