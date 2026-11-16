@@ -8,6 +8,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -992,6 +993,18 @@ namespace tcapi {
     trunc_svd(ctx, a, num_of_bds_as_row, u, s_diag, v_dag, trunc_err, chi_max, s_min, chi_min,
               target_trunc_err);
   }
+
+  // Rejects a floating-point chi_max. The (chi_max, s_min) form above would convert it to
+  // bond_dim_t, so a call shaped (target_trunc_err, s_min), a form TCAPI does not declare,
+  // would run with chi_max = floor(target_trunc_err) instead of failing to compile. Pass
+  // chi_max as bond_dim_t, or use the (chi_max, s_min, chi_min, target_trunc_err) form below.
+  template <typename TenT, typename TargetTruncErr, typename SMin,
+            std::enable_if_t<std::is_floating_point_v<TargetTruncErr>, int> = 0>
+  void trunc_svd(  // not (target_trunc_err, s_min): pass chi_max as bond_dim_t
+      context_handle_t<TenT>& ctx, const TenT& a, const order_t<TenT> num_of_bds_as_row, TenT& u,
+      real_ten_t<TenT>& s_diag, TenT& v_dag, real_t<TenT>& trunc_err,
+      TargetTruncErr target_trunc_err, SMin s_min)
+      = delete;
 
   // Truncated SVD - (chi_max, s_min, chi_min, target_trunc_err). The spec's
   // general truncation strategy; the (chi_max, s_min) form above delegates to it.

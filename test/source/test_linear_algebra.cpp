@@ -146,6 +146,65 @@ template <typename Ten> std::pair<cytnx::cytnx_uint64, tcapi::real_t<Ten>> trunc
   return {static_cast<cytnx::cytnx_uint64>(kept.size()), trunc_err};
 }
 
+// Whether trunc_svd(ctx, a, num_of_bds_as_row, u, s_diag, v_dag, trunc_err, tail...) is
+// well-formed, with every argument an lvalue of the stated type, as a caller's variables are.
+// ExplicitTenT spells the call trunc_svd<Ten>(...) instead of leaving TenT to deduction.
+template <typename Ten, bool ExplicitTenT, typename Void, typename... Tail> struct trunc_svd_accepts
+    : std::false_type {};
+
+template <typename Ten, typename... Tail> struct trunc_svd_accepts<
+    Ten, false,
+    std::void_t<decltype(tcapi::trunc_svd(
+        std::declval<tcapi::context_handle_t<Ten>&>(), std::declval<const Ten&>(),
+        std::declval<tcapi::order_t<Ten>&>(), std::declval<Ten&>(),
+        std::declval<tcapi::real_ten_t<Ten>&>(), std::declval<Ten&>(),
+        std::declval<tcapi::real_t<Ten>&>(), std::declval<Tail&>()...))>,
+    Tail...> : std::true_type {};
+
+template <typename Ten, typename... Tail> struct trunc_svd_accepts<
+    Ten, true,
+    std::void_t<decltype(tcapi::trunc_svd<Ten>(
+        std::declval<tcapi::context_handle_t<Ten>&>(), std::declval<const Ten&>(),
+        std::declval<tcapi::order_t<Ten>&>(), std::declval<Ten&>(),
+        std::declval<tcapi::real_ten_t<Ten>&>(), std::declval<Ten&>(),
+        std::declval<tcapi::real_t<Ten>&>(), std::declval<Tail&>()...))>,
+    Tail...> : std::true_type {};
+
+template <typename Ten, typename... Tail> inline constexpr bool trunc_svd_accepts_v
+    = trunc_svd_accepts<Ten, false, void, Tail...>::value;
+
+template <typename Ten, typename... Tail> inline constexpr bool explicit_trunc_svd_accepts_v
+    = trunc_svd_accepts<Ten, true, void, Tail...>::value;
+
+// The two trailing arguments of trunc_svd's 9-argument form are (chi_max, s_min), and nothing
+// else. A floating-point first one is rejected rather than converted to chi_max, so a call
+// shaped (target_trunc_err, s_min) does not compile; chi_max given as an integer, with s_min of
+// either kind, does. No other argument count binds the pre-specification shapes (s_min) and
+// (chi_max, target_trunc_err, s_min), and the general form keeps compiling.
+TEST_CASE_TEMPLATE_DEFINE("TCAPI trunc_svd - trailing arguments the overload set accepts", Ten,
+                          trunc_svd_trailing_arguments) {
+  using Bond = tcapi::bond_dim_t<Ten>;
+  using Real = tcapi::real_t<Ten>;
+
+  static_assert(!trunc_svd_accepts_v<Ten, double, double>);
+  static_assert(!trunc_svd_accepts_v<Ten, double, int>);
+  static_assert(!trunc_svd_accepts_v<Ten, Real, Real>);
+  static_assert(!explicit_trunc_svd_accepts_v<Ten, double, double>);
+  static_assert(!explicit_trunc_svd_accepts_v<Ten, double, int>);
+
+  static_assert(trunc_svd_accepts_v<Ten, int, double>);
+  static_assert(trunc_svd_accepts_v<Ten, Bond, double>);
+  static_assert(trunc_svd_accepts_v<Ten, Bond, int>);
+  static_assert(trunc_svd_accepts_v<Ten, Bond, Real>);
+  static_assert(explicit_trunc_svd_accepts_v<Ten, Bond, Real>);
+
+  static_assert(!trunc_svd_accepts_v<Ten, Real>);
+  static_assert(!trunc_svd_accepts_v<Ten, Bond, Real, Real>);
+  static_assert(trunc_svd_accepts_v<Ten, Bond, Real, Bond, Real>);
+}
+
+TEST_CASE_TEMPLATE_APPLY(trunc_svd_trailing_arguments, tcapi::supported_ten_types_t);
+
 // Backend-specific coverage for the precision of epsilon in single precision.
 //
 // trunc_svd assembles epsilon from the singular values alone, in double. What

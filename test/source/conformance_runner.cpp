@@ -2,13 +2,8 @@
 // adapter. Each `TCAPICT_DOCTEST_REGISTER_*` line expands into one `TEST_CASE`
 // per applicable conformance test; see the tcapict adapter header for the
 // suite categorization.
-//
-// TCAPI_NO_DEPRECATED_API is defined before the first include of
-// `<tcapi/tcapi.h>`, which the adapter also includes, so the overloads in
-// cytnx_typed_tensor_impl_deprecated.h stay out of the conformance tests.
 
 #include <doctest/doctest.h>
-#define TCAPI_NO_DEPRECATED_API
 #include <tcapi/tcapi.h>
 #include <tcapict/adapters/doctest.h>
 

@@ -96,21 +96,6 @@ cmake --build build --parallel 8
 ./build-debug/test/TCAPITests --test-case="*template*"
 ```
 
-## Disabling the Deprecated API
-
-Define `TCAPI_NO_DEPRECATED_API` to suppress deprecated `template <typename ElemT>` overloads:
-
-```cpp
-#define TCAPI_NO_DEPRECATED_API
-#include "tcapi/tcapi.h"
-```
-
-Or via CMake:
-
-```bash
-target_compile_definitions(your_target PRIVATE TCAPI_NO_DEPRECATED_API)
-```
-
 ## Usage Example
 
 ### Basic Usage with CytnxTensor
