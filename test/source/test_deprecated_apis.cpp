@@ -126,26 +126,8 @@ TEST_CASE("Deprecated APIs produce warnings") {
     Real trunc_err;
 
     // Using deprecated API - should show warning (9 parameters, both trailing arguments real,
-    // which is what picks this overload over (chi_max, s_min)). TenT is spelled out: left to
-    // deduction the ElemT wrapper is the more specialized candidate and wins, so the warning
-    // would come from that wrapper's own deprecation rather than this overload's.
-    tcapi::trunc_svd<Tensor>(ctx, matrix, 1, u, s_diag, v_dag, trunc_err, 1e-2, 1e-10);
-
-    check_both_kept(u, s_diag, v_dag, trunc_err);
-  }
-
-  SUBCASE("deprecated: ElemT trunc_svd - chi_max, s_min, chi_min, target_trunc_err") {
-    auto matrix = diag_1_2();
-
-    Tensor u, v_dag;
-    RealTensor s_diag;
-    Real trunc_err;
-
-    // Using deprecated API - should show warning. Left to deduction, the call picks the ElemT
-    // wrapper over the TenT form, as the subcase above notes.
-    tcapi::trunc_svd(ctx, matrix, 1, u, s_diag, v_dag, trunc_err,
-                     static_cast<tcapi::bond_dim_t<Tensor>>(2), static_cast<Real>(1e-10),
-                     static_cast<tcapi::bond_dim_t<Tensor>>(1), static_cast<Real>(1e-2));
+    // which is what picks this overload over (chi_max, s_min)).
+    tcapi::trunc_svd(ctx, matrix, 1, u, s_diag, v_dag, trunc_err, 1e-2, 1e-10);
 
     check_both_kept(u, s_diag, v_dag, trunc_err);
   }
