@@ -13,7 +13,7 @@ TEST_CASE("Template Function const Type Issues") {
   context_handle_t<Ten> ctx;
   create_context(ctx);
 
-  SUBCASE("to_container with const tensor") {
+  SUBCASE("to_range with const tensor") {
     // Create a 2x2 tensor
     Ten a = eye<Ten>(ctx, 2);
 
@@ -29,7 +29,7 @@ TEST_CASE("Template Function const Type Issues") {
     };
 
     // This should work with const tensor
-    CHECK_NOTHROW(to_container(ctx, const_a, container.begin(), row_major_map));
+    CHECK_NOTHROW(to_range(ctx, const_a, container.begin(), row_major_map));
 
     // Verify values (identity matrix)
     CHECK(container[0].real() == doctest::Approx(1.0));  // (0,0)
@@ -44,7 +44,7 @@ TEST_CASE("Template Function const Type Issues") {
 
     Ten a;
     auto half_gen = []() { return 0.5; };
-    CHECK_NOTHROW(random(ctx, shape, half_gen, a));
+    CHECK_NOTHROW(a = random<Ten>(ctx, shape, half_gen));
 
     // Verify the tensor was created with correct shape
     auto result_shape = tcapi::shape(ctx, a);
@@ -56,8 +56,7 @@ TEST_CASE("Template Function const Type Issues") {
     // Test type alias resolution with const tensor
     shape_t<Ten> shape = {3};
 
-    Ten a;
-    fill(ctx, shape, 1.0, a);
+    Ten a = fill<Ten>(ctx, shape, 1.0);
     const Ten& const_a = a;
 
     // This creates elem_coors_t for const tensor implicitly
@@ -82,7 +81,7 @@ TEST_CASE("CytnxTensor Element Type Conversion") {
     // Create a double tensor
     CytnxTensor<cytnx::cytnx_double> real_tensor;
     shape_t<CytnxTensor<cytnx::cytnx_double>> shape = {2, 2};
-    zeros(ctx, shape, real_tensor);
+    real_tensor = zeros<CytnxTensor<cytnx::cytnx_double>>(ctx, shape);
 
     // Set some values
     set_elem(ctx, real_tensor, {0, 0}, 1.5);
@@ -115,7 +114,7 @@ TEST_CASE("CytnxTensor Element Type Conversion") {
     // Create a float tensor
     CytnxTensor<cytnx::cytnx_float> float_tensor;
     shape_t<CytnxTensor<cytnx::cytnx_float>> shape = {3, 3};
-    eye(ctx, 3, float_tensor);
+    float_tensor = eye<CytnxTensor<cytnx::cytnx_float>>(ctx, 3);
 
     // Convert to double tensor
     context_handle_t<CytnxTensor<cytnx::cytnx_double>> ctx_double;
@@ -140,7 +139,7 @@ TEST_CASE("CytnxTensor Element Type Conversion") {
     // Create a complex float tensor
     CytnxTensor<cytnx::cytnx_complex64> cplx_float_tensor;
     shape_t<CytnxTensor<cytnx::cytnx_complex64>> shape = {2, 3};
-    zeros(ctx, shape, cplx_float_tensor);
+    cplx_float_tensor = zeros<CytnxTensor<cytnx::cytnx_complex64>>(ctx, shape);
 
     // Set complex values
     set_elem(ctx, cplx_float_tensor, {0, 0}, cytnx::cytnx_complex64(1.0f, 2.0f));
@@ -168,7 +167,7 @@ TEST_CASE("CytnxTensor Element Type Conversion") {
     // Create a double tensor
     CytnxTensor<cytnx::cytnx_double> tensor1;
     shape_t<CytnxTensor<cytnx::cytnx_double>> shape = {2, 2};
-    fill(ctx, shape, 3.14, tensor1);
+    tensor1 = fill<CytnxTensor<cytnx::cytnx_double>>(ctx, shape, 3.14);
 
     // Convert to same type
     context_handle_t<CytnxTensor<cytnx::cytnx_double>> ctx2;

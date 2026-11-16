@@ -3,9 +3,6 @@
 #include "tcapi/construction_destruction.h"
 #include "tcapi/cytnx_tensor_traits.h"
 #include "tcapi/cytnx_typed_tensor_impl.h"
-#ifndef TCAPI_NO_DEPRECATED_API
-#  include "tcapi/cytnx_typed_tensor_impl_deprecated.h"
-#endif
 #include "tcapi/debugging.h"
 #include "tcapi/io_operations.h"
 #include "tcapi/miscellaneous.h"

@@ -38,16 +38,6 @@ namespace tcapi {
     struct order_type_fallback<TenT, std::void_t<typename tensor_traits<TenT>::order_t>> {
       using type = typename tensor_traits<TenT>::order_t;
     };
-
-    // Helper to support legacy rank_t alias; falls back to order_t if rank_t is absent
-    template <typename TenT, typename = void> struct rank_type_fallback {
-      using type = typename tensor_traits<TenT>::order_t;
-    };
-
-    template <typename TenT>
-    struct rank_type_fallback<TenT, std::void_t<typename tensor_traits<TenT>::rank_t>> {
-      using type = typename tensor_traits<TenT>::rank_t;
-    };
   }  // namespace detail
 
   // Convenience type aliases for extracting types from tensor_traits

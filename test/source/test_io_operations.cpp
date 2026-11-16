@@ -15,8 +15,7 @@ TEST_CASE("tcapi::save file creation verification") {
   tcapi::create_context(ctx);
 
   SUBCASE("Save creates file on disk") {
-    tcapi::CytnxTensor<cytnx::cytnx_complex128> tensor;
-    tcapi::eye(ctx, 2, tensor);
+    auto tensor = tcapi::eye<tcapi::CytnxTensor<cytnx::cytnx_complex128>>(ctx, 2);
 
     std::string filepath = "/tmp/claude/test_tensor.cytnx";
     CHECK_NOTHROW(tcapi::save(ctx, tensor, filepath));
@@ -31,12 +30,6 @@ TEST_CASE("tcapi::load error handling") {
   tcapi::create_context(ctx);
 
   SUBCASE("Load nonexistent file throws with message") {
-    std::string filepath = "/tmp/claude/nonexistent_tensor.cytnx";
-    tcapi::CytnxTensor<cytnx::cytnx_complex128> tensor;
-    CHECK_THROWS_WITH(tcapi::load(ctx, filepath, tensor), doctest::Contains("could not find file"));
-  }
-
-  SUBCASE("Out-of-place load nonexistent file throws with message") {
     std::string filepath = "/tmp/claude/nonexistent_tensor.cytnx";
     CHECK_THROWS_WITH(tcapi::load<tcapi::CytnxTensor<cytnx::cytnx_complex128>>(ctx, filepath),
                       doctest::Contains("could not find file"));

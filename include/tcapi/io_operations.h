@@ -38,7 +38,7 @@ namespace tcapi {
   }  // namespace detail
 
   /**
-   * @brief Load tensor from storage (out-of-place version)
+   * @brief Load tensor from storage
    *
    * @tparam TenT Tensor type
    * @tparam Storage Storage type (e.g., file path, memory buffer)

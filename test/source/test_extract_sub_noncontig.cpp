@@ -26,8 +26,7 @@ TEST_CASE("extract_sub on transposed (non-contiguous) tensor") {
 
   // Build a 4x5 source tensor with unique per-coordinate values, then
   // transpose so the Cytnx-side _mapper is no longer the identity.
-  Tensor M;
-  tcapi::zeros(ctx, {4, 5}, M);
+  Tensor M = tcapi::zeros<Tensor>(ctx, {4, 5});
   for (std::size_t i = 0; i < 4; ++i) {
     for (std::size_t j = 0; j < 5; ++j) {
       tcapi::set_elem(ctx, M, ElemCoors{static_cast<ElemCoor>(i), static_cast<ElemCoor>(j)},
@@ -62,8 +61,7 @@ TEST_CASE("replace_sub on transposed (non-contiguous) tensor") {
 
   // Same construction; this time replace a 2x2 block of the transposed
   // tensor and verify both replaced and untouched positions.
-  Tensor M;
-  tcapi::zeros(ctx, {4, 5}, M);
+  Tensor M = tcapi::zeros<Tensor>(ctx, {4, 5});
   for (std::size_t i = 0; i < 4; ++i) {
     for (std::size_t j = 0; j < 5; ++j) {
       tcapi::set_elem(ctx, M, ElemCoors{static_cast<ElemCoor>(i), static_cast<ElemCoor>(j)},
@@ -72,8 +70,7 @@ TEST_CASE("replace_sub on transposed (non-contiguous) tensor") {
   }
   tcapi::transpose(ctx, M, {1, 0});
 
-  Tensor sub;
-  tcapi::zeros(ctx, {2, 2}, sub);
+  Tensor sub = tcapi::zeros<Tensor>(ctx, {2, 2});
   for (std::size_t r = 0; r < 2; ++r) {
     for (std::size_t c = 0; c < 2; ++c) {
       tcapi::set_elem(ctx, sub, ElemCoors{static_cast<ElemCoor>(r), static_cast<ElemCoor>(c)},

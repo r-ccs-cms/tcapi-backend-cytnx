@@ -42,8 +42,7 @@ namespace tcapi {
    * using Tensor = tcapi::CytnxTensor<cytnx::cytnx_complex128>;
    * using Elem = tcapi::tensor_traits<Tensor>::elem_t;  // = std::complex<double>
    *
-   * Tensor t;
-   * tcapi::allocate(ctx, {3, 3}, t);
+   * Tensor t = tcapi::allocate<Tensor>(ctx, {3, 3});
    * Elem elem = tcapi::get_elem(ctx, t, {0, 0});
    * auto result = elem / 2.0;  // Standard C++ operators work
    * @endcode

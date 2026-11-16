@@ -23,7 +23,7 @@ namespace tcapi {
   template <typename TenT> TenT allocate(context_handle_t<TenT>& ctx, const shape_t<TenT>& shape);
 
   /**
-   * @brief Create a tensor filled with zeros (out-of-place version)
+   * @brief Create a tensor filled with zeros
    *
    * @tparam TenT Tensor type
    * @param ctx Context handle for the tensor library
@@ -83,7 +83,7 @@ namespace tcapi {
   }
 
   /**
-   * @brief Create a tensor with random values (out-of-place version)
+   * @brief Create a tensor with random values
    *
    * @tparam TenT Tensor type
    * @tparam RandNumGen Random number generator type
@@ -119,7 +119,7 @@ namespace tcapi {
   }
 
   /**
-   * @brief Create an identity matrix (out-of-place version)
+   * @brief Create an identity matrix
    *
    * @tparam TenT Tensor type
    * @param ctx Context handle for the tensor library
@@ -129,7 +129,7 @@ namespace tcapi {
   template <typename TenT> TenT eye(context_handle_t<TenT>& ctx, const bond_dim_t<TenT> N);
 
   /**
-   * @brief Fill tensor with a constant value (out-of-place version)
+   * @brief Fill tensor with a constant value
    *
    * @tparam TenT Tensor type
    * @param ctx Context handle for the tensor library
@@ -141,17 +141,7 @@ namespace tcapi {
   TenT fill(context_handle_t<TenT>& ctx, const shape_t<TenT>& shape, const elem_t<TenT> v);
 
   /**
-   * @brief Deep copy a tensor (in-place version)
-   *
-   * @tparam TenT Tensor type
-   * @param ctx Context handle for the tensor library
-   * @param orig Original tensor to copy
-   * @param dist Destination tensor
-   */
-  template <typename TenT> void copy(context_handle_t<TenT>& ctx, const TenT& orig, TenT& dist);
-
-  /**
-   * @brief Deep copy a tensor (out-of-place version)
+   * @brief Deep copy a tensor
    *
    * @tparam TenT Tensor type
    * @param ctx Context handle for the tensor library
@@ -161,17 +151,7 @@ namespace tcapi {
   template <typename TenT> TenT copy(context_handle_t<TenT>& ctx, const TenT& orig);
 
   /**
-   * @brief Move tensor contents (in-place version)
-   *
-   * @tparam TenT Tensor type
-   * @param ctx Context handle for the tensor library
-   * @param from Source tensor (will be empty after move)
-   * @param to Destination tensor
-   */
-  template <typename TenT> void move(context_handle_t<TenT>& ctx, TenT& from, TenT& to);
-
-  /**
-   * @brief Move tensor contents (out-of-place version)
+   * @brief Move tensor contents
    *
    * @tparam TenT Tensor type
    * @param ctx Context handle for the tensor library

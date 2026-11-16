@@ -29,8 +29,7 @@ TEST_CASE("TCAPI Trace Operations" * doctest::skip()) {
 
   SUBCASE("Matrix trace calculation") {
     tcapi::shape_t<tcapi::CytnxTensor<cytnx::cytnx_complex128>> shape = {3, 3};
-    tcapi::CytnxTensor<cytnx::cytnx_complex128> matrix;
-    tcapi::zeros(ctx, shape, matrix);
+    auto matrix = tcapi::zeros<tcapi::CytnxTensor<cytnx::cytnx_complex128>>(ctx, shape);
 
     tcapi::set_elem(ctx, matrix, {0, 0}, cytnx::cytnx_complex128(2.0, 0.0));
     tcapi::set_elem(ctx, matrix, {1, 1}, cytnx::cytnx_complex128(3.0, 0.0));
@@ -56,14 +55,13 @@ TEST_CASE("TCAPI Contract - duplicate label validation") {
     tcapi::shape_t<tcapi::CytnxTensor<cytnx::cytnx_complex128>> shape_a = {3, 3, 4};
     tcapi::shape_t<tcapi::CytnxTensor<cytnx::cytnx_complex128>> shape_b = {5};
     tcapi::CytnxTensor<cytnx::cytnx_complex128> a, b, c;
-    tcapi::zeros(ctx, shape_a, a);
-    tcapi::zeros(ctx, shape_b, b);
+    a = tcapi::zeros<tcapi::CytnxTensor<cytnx::cytnx_complex128>>(ctx, shape_a);
+    b = tcapi::zeros<tcapi::CytnxTensor<cytnx::cytnx_complex128>>(ctx, shape_b);
 
     CHECK_THROWS_AS(tcapi::contract(ctx, a, "iij", b, "k", c, "jk"), std::invalid_argument);
 
     tcapi::shape_t<tcapi::CytnxTensor<cytnx::cytnx_complex128>> shape_b2 = {5, 5};
-    tcapi::CytnxTensor<cytnx::cytnx_complex128> b2;
-    tcapi::zeros(ctx, shape_b2, b2);
+    auto b2 = tcapi::zeros<tcapi::CytnxTensor<cytnx::cytnx_complex128>>(ctx, shape_b2);
     CHECK_THROWS_AS(tcapi::contract(ctx, a, "ijk", b2, "kk", c, "ij"), std::invalid_argument);
 
     tcapi::List<tcapi::bond_label_t<tcapi::CytnxTensor<cytnx::cytnx_complex128>>> bd_labs_a_dup
@@ -374,9 +372,9 @@ TEST_CASE("TCAPI Stack Operations") {
   SUBCASE("Stack three 2x4 tensors along axis 1") {
     tcapi::shape_t<Ten> shape = {2, 4};
     Ten a, b, c;
-    tcapi::zeros(ctx, shape, a);
-    tcapi::zeros(ctx, shape, b);
-    tcapi::zeros(ctx, shape, c);
+    a = tcapi::zeros<Ten>(ctx, shape);
+    b = tcapi::zeros<Ten>(ctx, shape);
+    c = tcapi::zeros<Ten>(ctx, shape);
 
     tcapi::set_elem(ctx, a, {0, 0}, cytnx::cytnx_complex128(1.0, 0.0));
     tcapi::set_elem(ctx, b, {0, 0}, cytnx::cytnx_complex128(2.0, 0.0));
@@ -402,8 +400,8 @@ TEST_CASE("TCAPI Stack Operations") {
   SUBCASE("Stack two 3x3 tensors along axis 0") {
     tcapi::shape_t<Ten> shape = {3, 3};
     Ten a, b;
-    tcapi::zeros(ctx, shape, a);
-    tcapi::zeros(ctx, shape, b);
+    a = tcapi::zeros<Ten>(ctx, shape);
+    b = tcapi::zeros<Ten>(ctx, shape);
 
     tcapi::set_elem(ctx, a, {1, 1}, cytnx::cytnx_complex128(5.0, 0.0));
     tcapi::set_elem(ctx, b, {2, 2}, cytnx::cytnx_complex128(6.0, 0.0));
@@ -425,8 +423,8 @@ TEST_CASE("TCAPI Stack Operations") {
   SUBCASE("Stack along last dimension (axis 2)") {
     tcapi::shape_t<Ten> shape = {2, 3};
     Ten a, b;
-    tcapi::zeros(ctx, shape, a);
-    tcapi::zeros(ctx, shape, b);
+    a = tcapi::zeros<Ten>(ctx, shape);
+    b = tcapi::zeros<Ten>(ctx, shape);
 
     tcapi::set_elem(ctx, a, {1, 2}, cytnx::cytnx_complex128(7.0, 0.0));
     tcapi::set_elem(ctx, b, {1, 2}, cytnx::cytnx_complex128(8.0, 0.0));
@@ -452,8 +450,8 @@ TEST_CASE("TCAPI Stack Operations") {
 
   SUBCASE("Error handling: mismatched tensor shapes") {
     Ten a, b;
-    tcapi::zeros(ctx, {2, 3}, a);
-    tcapi::zeros(ctx, {2, 4}, b);
+    a = tcapi::zeros<Ten>(ctx, {2, 3});
+    b = tcapi::zeros<Ten>(ctx, {2, 4});
 
     CHECK_THROWS_AS(tcapi::stack<Ten>(ctx, {std::cref(a), std::cref(b)}, 0), std::invalid_argument);
   }

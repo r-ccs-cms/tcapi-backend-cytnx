@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cytnx.hpp>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -13,8 +14,7 @@ TEST_CASE("TCAPI Eigenvalue - invalid num_of_bds_as_row") {
   tcapi::create_context(ctx);
 
   SUBCASE("eigvals with num_of_bds_as_row=2 on 2D tensor should throw") {
-    tcapi::CytnxTensor<cytnx::cytnx_complex128> diagonal;
-    tcapi::eye(ctx, 3, diagonal);
+    auto diagonal = tcapi::eye<tcapi::CytnxTensor<cytnx::cytnx_complex128>>(ctx, 3);
     tcapi::set_elem(ctx, diagonal, {1, 1}, cytnx::cytnx_complex128(2.0, 0.0));
     tcapi::set_elem(ctx, diagonal, {2, 2}, cytnx::cytnx_complex128(3.0, 0.0));
 
@@ -23,8 +23,7 @@ TEST_CASE("TCAPI Eigenvalue - invalid num_of_bds_as_row") {
   }
 
   SUBCASE("eigvalsh with num_of_bds_as_row=2 on 2D tensor should throw") {
-    tcapi::CytnxTensor<cytnx::cytnx_complex128> symmetric;
-    tcapi::zeros(ctx, {2, 2}, symmetric);
+    auto symmetric = tcapi::zeros<tcapi::CytnxTensor<cytnx::cytnx_complex128>>(ctx, {2, 2});
     tcapi::set_elem(ctx, symmetric, {0, 0}, cytnx::cytnx_complex128(1.0, 0.0));
     tcapi::set_elem(ctx, symmetric, {0, 1}, cytnx::cytnx_complex128(2.0, 0.0));
     tcapi::set_elem(ctx, symmetric, {1, 0}, cytnx::cytnx_complex128(2.0, 0.0));
@@ -42,8 +41,7 @@ TEST_CASE("TCAPI Matrix exponential - complex64 dtype preservation") {
   tcapi::create_context(ctx);
 
   // Test that complex64 tensors preserve their dtype through anti-Hermitian path
-  tcapi::CytnxTensor<cytnx::cytnx_complex64> anti_herm_f;
-  tcapi::zeros(ctx, {2, 2}, anti_herm_f);
+  auto anti_herm_f = tcapi::zeros<tcapi::CytnxTensor<cytnx::cytnx_complex64>>(ctx, {2, 2});
   tcapi::set_elem(ctx, anti_herm_f, {0, 1}, cytnx::cytnx_complex64(1.0f, 0.0f));
   tcapi::set_elem(ctx, anti_herm_f, {1, 0}, cytnx::cytnx_complex64(-1.0f, 0.0f));
 
@@ -71,8 +69,7 @@ TEST_CASE("TCAPI Matrix exponential - in-place real dtype preservation (double)"
   tcapi::context_handle_t<tcapi::CytnxTensor<cytnx::cytnx_double>> ctx;
   tcapi::create_context(ctx);
 
-  tcapi::CytnxTensor<cytnx::cytnx_double> diagonal;
-  tcapi::zeros(ctx, {2, 2}, diagonal);
+  auto diagonal = tcapi::zeros<tcapi::CytnxTensor<cytnx::cytnx_double>>(ctx, {2, 2});
   tcapi::set_elem(ctx, diagonal, {0, 0}, 1.0);
   tcapi::set_elem(ctx, diagonal, {1, 1}, 2.0);
 
@@ -97,8 +94,7 @@ TEST_CASE("TCAPI Matrix exponential - in-place real dtype preservation (float)")
   tcapi::context_handle_t<tcapi::CytnxTensor<cytnx::cytnx_float>> ctx;
   tcapi::create_context(ctx);
 
-  tcapi::CytnxTensor<cytnx::cytnx_float> anti_herm;
-  tcapi::zeros(ctx, {2, 2}, anti_herm);
+  auto anti_herm = tcapi::zeros<tcapi::CytnxTensor<cytnx::cytnx_float>>(ctx, {2, 2});
   tcapi::set_elem(ctx, anti_herm, {0, 1}, 1.0f);
   tcapi::set_elem(ctx, anti_herm, {1, 0}, -1.0f);
 
@@ -112,8 +108,7 @@ TEST_CASE("TCAPI Matrix inverse - singular matrix error") {
   tcapi::context_handle_t<tcapi::CytnxTensor<cytnx::cytnx_complex128>> ctx;
   tcapi::create_context(ctx);
 
-  tcapi::CytnxTensor<cytnx::cytnx_complex128> singular;
-  tcapi::zeros(ctx, {2, 2}, singular);
+  auto singular = tcapi::zeros<tcapi::CytnxTensor<cytnx::cytnx_complex128>>(ctx, {2, 2});
   tcapi::set_elem(ctx, singular, {0, 0}, cytnx::cytnx_complex128(1.0, 0.0));
   tcapi::set_elem(ctx, singular, {0, 1}, cytnx::cytnx_complex128(2.0, 0.0));
   tcapi::set_elem(ctx, singular, {1, 0}, cytnx::cytnx_complex128(2.0, 0.0));
@@ -136,8 +131,7 @@ template <typename Ten> std::pair<cytnx::cytnx_uint64, tcapi::real_t<Ten>> trunc
     tcapi::context_handle_t<Ten>& ctx, const std::vector<tcapi::real_t<Ten>>& svs, int chi_max,
     double target) {
   const auto n = static_cast<cytnx::cytnx_uint64>(svs.size());
-  Ten a;
-  tcapi::zeros(ctx, {n, n}, a);
+  Ten a = tcapi::zeros<Ten>(ctx, {n, n});
   for (cytnx::cytnx_uint64 i = 0; i < n; ++i) {
     tcapi::set_elem(ctx, a, {i, i}, svs[i]);
   }
@@ -152,6 +146,65 @@ template <typename Ten> std::pair<cytnx::cytnx_uint64, tcapi::real_t<Ten>> trunc
   const auto kept = require_diagonal(ctx, s_diag);
   return {static_cast<cytnx::cytnx_uint64>(kept.size()), trunc_err};
 }
+
+// Whether trunc_svd(ctx, a, num_of_bds_as_row, u, s_diag, v_dag, trunc_err, tail...) is
+// well-formed, with every argument an lvalue of the stated type, as a caller's variables are.
+// ExplicitTenT spells the call trunc_svd<Ten>(...) instead of leaving TenT to deduction.
+template <typename Ten, bool ExplicitTenT, typename Void, typename... Tail> struct trunc_svd_accepts
+    : std::false_type {};
+
+template <typename Ten, typename... Tail> struct trunc_svd_accepts<
+    Ten, false,
+    std::void_t<decltype(tcapi::trunc_svd(
+        std::declval<tcapi::context_handle_t<Ten>&>(), std::declval<const Ten&>(),
+        std::declval<tcapi::order_t<Ten>&>(), std::declval<Ten&>(),
+        std::declval<tcapi::real_ten_t<Ten>&>(), std::declval<Ten&>(),
+        std::declval<tcapi::real_t<Ten>&>(), std::declval<Tail&>()...))>,
+    Tail...> : std::true_type {};
+
+template <typename Ten, typename... Tail> struct trunc_svd_accepts<
+    Ten, true,
+    std::void_t<decltype(tcapi::trunc_svd<Ten>(
+        std::declval<tcapi::context_handle_t<Ten>&>(), std::declval<const Ten&>(),
+        std::declval<tcapi::order_t<Ten>&>(), std::declval<Ten&>(),
+        std::declval<tcapi::real_ten_t<Ten>&>(), std::declval<Ten&>(),
+        std::declval<tcapi::real_t<Ten>&>(), std::declval<Tail&>()...))>,
+    Tail...> : std::true_type {};
+
+template <typename Ten, typename... Tail> inline constexpr bool trunc_svd_accepts_v
+    = trunc_svd_accepts<Ten, false, void, Tail...>::value;
+
+template <typename Ten, typename... Tail> inline constexpr bool explicit_trunc_svd_accepts_v
+    = trunc_svd_accepts<Ten, true, void, Tail...>::value;
+
+// The two trailing arguments of trunc_svd's 9-argument form are (chi_max, s_min), and nothing
+// else. A floating-point first one is rejected rather than converted to chi_max, so a call
+// shaped (target_trunc_err, s_min) does not compile; chi_max given as an integer, with s_min of
+// either kind, does. No other argument count binds the pre-specification shapes (s_min) and
+// (chi_max, target_trunc_err, s_min), and the general form keeps compiling.
+TEST_CASE_TEMPLATE_DEFINE("TCAPI trunc_svd - trailing arguments the overload set accepts", Ten,
+                          trunc_svd_trailing_arguments) {
+  using Bond = tcapi::bond_dim_t<Ten>;
+  using Real = tcapi::real_t<Ten>;
+
+  static_assert(!trunc_svd_accepts_v<Ten, double, double>);
+  static_assert(!trunc_svd_accepts_v<Ten, double, int>);
+  static_assert(!trunc_svd_accepts_v<Ten, Real, Real>);
+  static_assert(!explicit_trunc_svd_accepts_v<Ten, double, double>);
+  static_assert(!explicit_trunc_svd_accepts_v<Ten, double, int>);
+
+  static_assert(trunc_svd_accepts_v<Ten, int, double>);
+  static_assert(trunc_svd_accepts_v<Ten, Bond, double>);
+  static_assert(trunc_svd_accepts_v<Ten, Bond, int>);
+  static_assert(trunc_svd_accepts_v<Ten, Bond, Real>);
+  static_assert(explicit_trunc_svd_accepts_v<Ten, Bond, Real>);
+
+  static_assert(!trunc_svd_accepts_v<Ten, Real>);
+  static_assert(!trunc_svd_accepts_v<Ten, Bond, Real, Real>);
+  static_assert(trunc_svd_accepts_v<Ten, Bond, Real, Bond, Real>);
+}
+
+TEST_CASE_TEMPLATE_APPLY(trunc_svd_trailing_arguments, tcapi::supported_ten_types_t);
 
 // Backend-specific coverage for the precision of epsilon in single precision.
 //
@@ -308,8 +361,7 @@ TEST_CASE("TCAPI SVD - large matrix exercises gesdd path (64x64 identity)") {
 
   // n == kGesddMinDim: the smallest dimension that takes the gesdd branch.
   constexpr int n = 64;
-  Ten a;
-  tcapi::eye(ctx, n, a);
+  Ten a = tcapi::eye<Ten>(ctx, n);
 
   SUBCASE("full svd: identity has 64 singular values all equal to 1") {
     Ten u, v_dag;
