@@ -33,12 +33,9 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
 message(STATUS "Created test executable: ${PROJECT_NAME}")
 
-# enable compiler warnings
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-  target_compile_options(TCAPI PUBLIC -Wall -Wpedantic -Wextra)
-elseif(MSVC)
-  target_compile_options(TCAPI PUBLIC /W4 /WX)
-  target_compile_definitions(${PROJECT_NAME} PUBLIC DOCTEST_CONFIG_USE_STD_HEADERS)
+tcapi_enable_warnings(${PROJECT_NAME})
+if(MSVC)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
 endif()
 
 # ---- Add TCAPITests ----

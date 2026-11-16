@@ -31,6 +31,10 @@ target_link_libraries(tensor_contraction_example PRIVATE TCAPI::TCAPI)
 set_target_properties(tensor_contraction_example PROPERTIES CXX_STANDARD 17)
 target_compile_options(tensor_contraction_example PRIVATE -g)
 
+foreach(example IN ITEMS simple_tensor_operations basic_tensor_example svd_example tensor_contraction_example)
+  tcapi_enable_warnings(${example})
+endforeach()
+
 # Install examples (optional)
 install(TARGETS simple_tensor_operations basic_tensor_example svd_example tensor_contraction_example
     RUNTIME DESTINATION bin/examples
