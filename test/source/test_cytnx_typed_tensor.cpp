@@ -11,6 +11,7 @@
 #include <string_view>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
 #include "diagonal_check.h"
 #include "sample_tensor.h"
@@ -143,6 +144,41 @@ TEST_CASE_TEMPLATE_DEFINE("CytnxTensor - Move-only", Tensor, cytnx_tensor_move_o
 }
 
 TEST_CASE_TEMPLATE_APPLY(cytnx_tensor_move_only, tcapi::supported_ten_types_t);
+
+// create_context_accepts<Arg, Ten> holds when create_context<Arg>(ctx) is well-formed for an
+// lvalue ctx of type context_handle_t<Ten>, and destroy_context_accepts<Arg, Ten> when
+// destroy_context<Arg>(ctx) is.
+template <typename Arg, typename Ten, typename Void = void> struct create_context_accepts
+    : std::false_type {};
+
+template <typename Arg, typename Ten>
+struct create_context_accepts<Arg, Ten,
+                              std::void_t<decltype(tcapi::create_context<Arg>(
+                                  std::declval<tcapi::context_handle_t<Ten>&>()))>>
+    : std::true_type {};
+
+template <typename Arg, typename Ten, typename Void = void> struct destroy_context_accepts
+    : std::false_type {};
+
+template <typename Arg, typename Ten>
+struct destroy_context_accepts<Arg, Ten,
+                               std::void_t<decltype(tcapi::destroy_context<Arg>(
+                                   std::declval<tcapi::context_handle_t<Ten>&>()))>>
+    : std::true_type {};
+
+// TCAPI V1 declares create_context and destroy_context over the handle type, ContextHandleT, so
+// the handle type is the template argument a caller may name, and a tensor type is not.
+TEST_CASE_TEMPLATE_DEFINE(
+    "CytnxTensor - context routines take the handle type as template argument", Tensor,
+    context_routines_explicit_argument) {
+  using Handle = tcapi::context_handle_t<Tensor>;
+  static_assert(create_context_accepts<Handle, Tensor>::value);
+  static_assert(destroy_context_accepts<Handle, Tensor>::value);
+  static_assert(!create_context_accepts<Tensor, Tensor>::value);
+  static_assert(!destroy_context_accepts<Tensor, Tensor>::value);
+}
+
+TEST_CASE_TEMPLATE_APPLY(context_routines_explicit_argument, tcapi::supported_ten_types_t);
 
 TEST_CASE("CytnxTensor - Construction") {
   SUBCASE("Default construction") {
@@ -649,6 +685,21 @@ TEST_CASE("CytnxTensor - Miscellaneous functions") {
 
     // Destroy context (should not throw)
     CHECK_NOTHROW(tcapi::destroy_context(ctx));
+  }
+
+  SUBCASE("create_context and destroy_context with the handle type named") {
+    using Handle = tcapi::context_handle_t<tcapi::CytnxTensor<cytnx::cytnx_complex128>>;
+    Handle deduced;
+    tcapi::create_context(deduced);
+    Handle named;
+    CHECK_NOTHROW(tcapi::create_context<Handle>(named));
+    // Without a GPU, create_context selects the CPU device, which a default-constructed handle
+    // already holds, so the two handles agreeing would not show that named was written.
+    if (cytnx::Device.Ngpus > 0) {
+      CHECK(named.get() == deduced.get());
+    }
+    CHECK_NOTHROW(tcapi::destroy_context<Handle>(named));
+    tcapi::destroy_context(deduced);
   }
 
   SUBCASE("to_range with row-major indexing") {
