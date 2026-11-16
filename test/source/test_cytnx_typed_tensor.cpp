@@ -157,20 +157,12 @@ namespace {
   template <template <typename...> class Op, typename... Args> using detected
       = detector<void, Op, Args...>;
 
-  // create_context<Arg>(ctx) and destroy_context<Arg>(ctx) for an lvalue ctx of type
-  // context_handle_t<Ten>.
-  template <typename Arg, typename Ten> using create_context_named_call
-      = decltype(tcapi::create_context<Arg>(std::declval<tcapi::context_handle_t<Ten>&>()));
+  // create_context<Arg>(a) and destroy_context<Arg>(a) for an lvalue a of type Obj.
+  template <typename Arg, typename Obj> using create_context_named_call
+      = decltype(tcapi::create_context<Arg>(std::declval<Obj&>()));
 
-  template <typename Arg, typename Ten> using destroy_context_named_call
-      = decltype(tcapi::destroy_context<Arg>(std::declval<tcapi::context_handle_t<Ten>&>()));
-
-  // create_context<Arg>(a) and destroy_context<Arg>(a) for an lvalue a of type Arg.
-  template <typename Arg> using create_context_named_own_call
-      = decltype(tcapi::create_context<Arg>(std::declval<Arg&>()));
-
-  template <typename Arg> using destroy_context_named_own_call
-      = decltype(tcapi::destroy_context<Arg>(std::declval<Arg&>()));
+  template <typename Arg, typename Obj> using destroy_context_named_call
+      = decltype(tcapi::destroy_context<Arg>(std::declval<Obj&>()));
 
   // create_context(ctx) and destroy_context(ctx) for an lvalue ctx of type Arg, with the template
   // argument deduced.
@@ -198,10 +190,10 @@ TEST_CASE_TEMPLATE_DEFINE(
     "CytnxTensor - context routines take the handle type as template argument", Tensor,
     context_routines_explicit_argument) {
   using Handle = tcapi::context_handle_t<Tensor>;
-  static_assert(detected<create_context_named_call, Handle, Tensor>::value);
-  static_assert(detected<destroy_context_named_call, Handle, Tensor>::value);
-  static_assert(!detected<create_context_named_call, Tensor, Tensor>::value);
-  static_assert(!detected<destroy_context_named_call, Tensor, Tensor>::value);
+  static_assert(detected<create_context_named_call, Handle, Handle>::value);
+  static_assert(detected<destroy_context_named_call, Handle, Handle>::value);
+  static_assert(!detected<create_context_named_call, Tensor, Handle>::value);
+  static_assert(!detected<destroy_context_named_call, Tensor, Handle>::value);
 }
 
 TEST_CASE_TEMPLATE_APPLY(context_routines_explicit_argument, tcapi::supported_ten_types_t);
@@ -217,8 +209,8 @@ TEST_CASE_TEMPLATE_DEFINE("CytnxTensor - context routines reject a tensor argume
   static_assert(detected<destroy_context_deduced_call, Handle>::value);
   static_assert(!detected<create_context_deduced_call, Tensor>::value);
   static_assert(!detected<destroy_context_deduced_call, Tensor>::value);
-  static_assert(!detected<create_context_named_own_call, Tensor>::value);
-  static_assert(!detected<destroy_context_named_own_call, Tensor>::value);
+  static_assert(!detected<create_context_named_call, Tensor, Tensor>::value);
+  static_assert(!detected<destroy_context_named_call, Tensor, Tensor>::value);
 }
 
 TEST_CASE_TEMPLATE_APPLY(context_routines_reject_tensor, tcapi::supported_ten_types_t);
