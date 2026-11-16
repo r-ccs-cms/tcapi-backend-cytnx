@@ -176,18 +176,6 @@ TEST_CASE_TEMPLATE_DEFINE(
   static_assert(destroy_context_accepts<Handle, Tensor>::value);
   static_assert(!create_context_accepts<Tensor, Tensor>::value);
   static_assert(!destroy_context_accepts<Tensor, Tensor>::value);
-
-  Handle deduced;
-  tcapi::create_context(deduced);
-  Handle named;
-  CHECK_NOTHROW(tcapi::create_context<Handle>(named));
-  // Without a GPU, create_context selects the CPU device, which a default-constructed handle
-  // already holds, so the two handles agreeing would not show that named was written.
-  if (cytnx::Device.Ngpus > 0) {
-    CHECK(named.get() == deduced.get());
-  }
-  CHECK_NOTHROW(tcapi::destroy_context<Handle>(named));
-  tcapi::destroy_context(deduced);
 }
 
 TEST_CASE_TEMPLATE_APPLY(context_routines_explicit_argument, tcapi::supported_ten_types_t);
@@ -697,6 +685,21 @@ TEST_CASE("CytnxTensor - Miscellaneous functions") {
 
     // Destroy context (should not throw)
     CHECK_NOTHROW(tcapi::destroy_context(ctx));
+  }
+
+  SUBCASE("create_context and destroy_context with the handle type named") {
+    using Handle = tcapi::context_handle_t<tcapi::CytnxTensor<cytnx::cytnx_complex128>>;
+    Handle deduced;
+    tcapi::create_context(deduced);
+    Handle named;
+    CHECK_NOTHROW(tcapi::create_context<Handle>(named));
+    // Without a GPU, create_context selects the CPU device, which a default-constructed handle
+    // already holds, so the two handles agreeing would not show that named was written.
+    if (cytnx::Device.Ngpus > 0) {
+      CHECK(named.get() == deduced.get());
+    }
+    CHECK_NOTHROW(tcapi::destroy_context<Handle>(named));
+    tcapi::destroy_context(deduced);
   }
 
   SUBCASE("to_range with row-major indexing") {
