@@ -2,8 +2,12 @@
 
 namespace tcapi {
 
-  // Forward declarations
-  template <typename ContextHandleT> void create_context(ContextHandleT& ctx);
+  // Only the CytnxContextHandle specializations below have definitions. Deleting the primary
+  // templates turns a call whose argument deduces another type into a compile error instead of an
+  // undefined reference at link time. A deleted definition must be the first declaration, so it
+  // stays here, ahead of the friend declaration in CytnxContextHandle.
+  template <typename ContextHandleT> void create_context(ContextHandleT& ctx) = delete;
+  template <typename ContextHandleT> void destroy_context(ContextHandleT& ctx) = delete;
   class CytnxContextHandle;
   void create_context(CytnxContextHandle& ctx, int gpu_id);
 
@@ -46,5 +50,8 @@ namespace tcapi {
     // Explicit getter
     int get() const { return value_; }
   };
+
+  template <> void create_context(CytnxContextHandle& ctx);
+  template <> void destroy_context(CytnxContextHandle& ctx);
 
 }  // namespace tcapi

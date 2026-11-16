@@ -180,6 +180,36 @@ TEST_CASE_TEMPLATE_DEFINE(
 
 TEST_CASE_TEMPLATE_APPLY(context_routines_explicit_argument, tcapi::supported_ten_types_t);
 
+// create_context_deduces<Arg> holds when create_context(ctx) is well-formed for an lvalue ctx of
+// type Arg, with the template argument deduced, and destroy_context_deduces<Arg> when
+// destroy_context(ctx) is.
+template <typename Arg, typename Void = void> struct create_context_deduces : std::false_type {};
+
+template <typename Arg>
+struct create_context_deduces<Arg,
+                              std::void_t<decltype(tcapi::create_context(std::declval<Arg&>()))>>
+    : std::true_type {};
+
+template <typename Arg, typename Void = void> struct destroy_context_deduces : std::false_type {};
+
+template <typename Arg>
+struct destroy_context_deduces<Arg,
+                               std::void_t<decltype(tcapi::destroy_context(std::declval<Arg&>()))>>
+    : std::true_type {};
+
+// Only the context handle type has a definition of create_context and destroy_context, so a call
+// on a tensor has to be rejected when it is compiled, not left as an undefined reference.
+TEST_CASE_TEMPLATE_DEFINE("CytnxTensor - context routines reject a tensor argument", Tensor,
+                          context_routines_reject_tensor) {
+  using Handle = tcapi::context_handle_t<Tensor>;
+  static_assert(create_context_deduces<Handle>::value);
+  static_assert(destroy_context_deduces<Handle>::value);
+  static_assert(!create_context_deduces<Tensor>::value);
+  static_assert(!destroy_context_deduces<Tensor>::value);
+}
+
+TEST_CASE_TEMPLATE_APPLY(context_routines_reject_tensor, tcapi::supported_ten_types_t);
+
 TEST_CASE("CytnxTensor - Construction") {
   SUBCASE("Default construction") {
     tcapi::CytnxTensor<cytnx::cytnx_double> t;
