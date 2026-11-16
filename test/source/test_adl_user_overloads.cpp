@@ -64,6 +64,15 @@
   X(stack)                    \
   X(linear_combine)
 
+// Every listed name must be a tcapi function, or the checks below would pass with no tcapi
+// candidate to discard; a using-declaration of a name tcapi does not declare fails to compile.
+namespace adl_tcapi_names {
+#define ADL_TCAPI_DECLARES(fn) using tcapi::fn;
+  ADL_TENSOR_ARG_NAMES(ADL_TCAPI_DECLARES)
+  ADL_LIST_ARG_NAMES(ADL_TCAPI_DECLARES)
+#undef ADL_TCAPI_DECLARES
+}  // namespace adl_tcapi_names
+
 // Stands in for user code: one catch-all per name, returning Hit, a type no tcapi function
 // returns.
 namespace adl_user {
