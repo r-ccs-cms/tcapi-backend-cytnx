@@ -2,33 +2,36 @@
 
 namespace tcapi {
 
-  // Of these two templates, only the CytnxContextHandle specializations below have non-deleted
-  // definitions. Deleting the primary templates turns a call whose template argument, deduced or
-  // named, is another type into a compile error instead of an undefined reference at link time. A
-  // deleted definition must be the first declaration of its template, so the deletions open this
-  // header.
-  template <typename ContextHandleT> void create_context(ContextHandleT& ctx) = delete;
-  template <typename ContextHandleT> void destroy_context(ContextHandleT& ctx) = delete;
-  class CytnxContextHandle;
+  // Only the CytnxContextHandle specializations below have non-deleted definitions. Deleting the
+  // primary templates makes a call that resolves to any other specialization a compile error
+  // instead of an undefined reference at link time. A deleted definition must be the first
+  // declaration of its template, so the deletions open this header.
 
   /**
    * @brief Create context handle (in-place version)
    *
-   * A call whose template argument, deduced or named, is not CytnxContextHandle selects the
-   * deleted primary template and does not compile.
-   *
+   * @tparam ContextHandleT Context handle type. CytnxContextHandle is the only one accepted: a
+   * call with any other template argument, deduced or named, does not compile.
    * @param ctx Context handle to initialize
    */
-  template <> void create_context(CytnxContextHandle& ctx);
+  template <typename ContextHandleT> void create_context(ContextHandleT& ctx) = delete;
 
   /**
    * @brief Destroy context handle
    *
-   * A call whose template argument, deduced or named, is not CytnxContextHandle selects the
-   * deleted primary template and does not compile.
-   *
+   * @tparam ContextHandleT Context handle type. CytnxContextHandle is the only one accepted: a
+   * call with any other template argument, deduced or named, does not compile.
    * @param ctx Context handle to destroy
    */
+  template <typename ContextHandleT> void destroy_context(ContextHandleT& ctx) = delete;
+
+  class CytnxContextHandle;
+
+  // The friend declaration in CytnxContextHandle names the create_context specialization, so the
+  // specializations are declared ahead of the class. Declared after it, they would follow the
+  // friend declaration that names one of them, and clang then rejects create_context(ctx) on a
+  // handle as a call to the deleted primary.
+  template <> void create_context(CytnxContextHandle& ctx);
   template <> void destroy_context(CytnxContextHandle& ctx);
 
   void create_context(CytnxContextHandle& ctx, int gpu_id);
