@@ -145,8 +145,9 @@ TEST_CASE_TEMPLATE_DEFINE("CytnxTensor - Move-only", Tensor, cytnx_tensor_move_o
 
 TEST_CASE_TEMPLATE_APPLY(cytnx_tensor_move_only, tcapi::supported_ten_types_t);
 
-// Whether create_context<Arg>(ctx) and destroy_context<Arg>(ctx) are well-formed for an lvalue
-// handle of Ten's context type.
+// create_context_accepts<Arg, Ten> holds when create_context<Arg>(ctx) is well-formed for an
+// lvalue ctx of type context_handle_t<Ten>, and destroy_context_accepts<Arg, Ten> when
+// destroy_context<Arg>(ctx) is.
 template <typename Arg, typename Ten, typename Void = void> struct create_context_accepts
     : std::false_type {};
 
@@ -180,7 +181,11 @@ TEST_CASE_TEMPLATE_DEFINE(
   tcapi::create_context(deduced);
   Handle named;
   CHECK_NOTHROW(tcapi::create_context<Handle>(named));
-  CHECK(named.get() == deduced.get());
+  // Without a GPU, create_context selects the CPU device, which a default-constructed handle
+  // already holds, so the two handles agreeing would not show that named was written.
+  if (cytnx::Device.Ngpus > 0) {
+    CHECK(named.get() == deduced.get());
+  }
   CHECK_NOTHROW(tcapi::destroy_context<Handle>(named));
   tcapi::destroy_context(deduced);
 }
