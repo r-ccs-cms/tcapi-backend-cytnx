@@ -107,10 +107,12 @@ TEST_CASE("ADL - a caller's function named like a tcapi function is selected for
   ADL_TENSOR_ARG_NAMES(ADL_CHECK_TENSOR_ARG)
   ADL_LIST_ARG_NAMES(ADL_CHECK_LIST_ARG)
 
-  // convert deduces its two tensor types separately, so the second one alone being the user type
+  // convert deduces its two tensor types separately, so either one alone being the user type
   // takes the tcapi templates out of the call as well.
   static_assert(ADL_SELECTS_USER(
       convert(ctx, std::declval<const tcapi::CytnxTensor<std::complex<double>>&>(), ctx, c)));
+  static_assert(ADL_SELECTS_USER(
+      convert(ctx, c, ctx, std::declval<tcapi::CytnxTensor<std::complex<double>>&>())));
 }
 
 #undef ADL_CHECK_LIST_ARG
