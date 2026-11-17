@@ -12,7 +12,8 @@
 ### Required
 
 - **CMake 3.24+**: Required for Cytnx
-- **C++20 capable compiler**: GCC 10+, Clang 12+
+- **C++20 compiler with a GNU-style command line**: GCC, Clang (AppleClang included), or Intel oneAPI icpx, whose standard library provides `std::format`, which Cytnx requires: libstdc++ from GCC 13 or later, or libc++ from LLVM 17 or later
+- **Not supported**: compilers that CMake drives with MSVC's `cl` command-line syntax (MSVC, clang-cl, and the Intel oneAPI compilers on Windows); configuring with one stops with an error
 - **BLAS/LAPACK**: OpenBLAS recommended
 - **Cytnx**: Included as git submodule
 - **OpenMP**: For parallel computations

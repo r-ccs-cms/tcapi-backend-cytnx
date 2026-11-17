@@ -41,9 +41,6 @@ set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
 message(STATUS "Created test executable: ${PROJECT_NAME}")
 
 tcapi_enable_warnings(${PROJECT_NAME})
-if(MSVC)
-  target_compile_definitions(${PROJECT_NAME} PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
-endif()
 
 # ---- Add TCAPITests ----
 

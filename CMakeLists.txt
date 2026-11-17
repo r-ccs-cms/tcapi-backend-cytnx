@@ -21,6 +21,21 @@ project(
   LANGUAGES ${TCAPI_LANGUAGES}
 )
 
+# ---- Supported compilers ----
+
+# This repository's CMake passes compiler flags in GNU command-line syntax only.
+# CMake sets MSVC for every compiler it drives with MSVC's cl syntax instead,
+# including clang-cl and every Intel oneAPI compiler on Windows, so stop here
+# rather than hand them flags written for the other syntax.
+if(MSVC)
+  message(
+    FATAL_ERROR
+      "Compilers that CMake drives with MSVC's cl command-line syntax are not supported "
+      "(found ${CMAKE_CXX_COMPILER_ID}: ${CMAKE_CXX_COMPILER}). "
+      "Configure with GCC or Clang, or with Intel oneAPI icpx on Linux, instead."
+  )
+endif()
+
 # ---- Version Information ----
 
 set(TCAPI_SPEC_VERSION "1.0-rc.1")
@@ -279,9 +294,6 @@ file(GLOB_RECURSE sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/source/
 add_library(${PROJECT_NAME} ${headers} ${sources})
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
 
-# being a cross-platform target, we enforce standards conformance on MSVC
-target_compile_options(${PROJECT_NAME} PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/permissive->")
-
 # ---- Compiler warnings ----
 
 # Compiler warnings are this repository's development policy, not a usage
@@ -296,10 +308,10 @@ function(tcapi_enable_warnings target)
   if(NOT TCAPI_ENABLE_WARNINGS)
     return()
   endif()
-  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang"
+     OR CMAKE_CXX_COMPILER_ID MATCHES "GNU"
+     OR CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
     target_compile_options(${target} PRIVATE -Wall -Wpedantic -Wextra)
-  elseif(MSVC)
-    target_compile_options(${target} PRIVATE /W4 /WX)
   endif()
 endfunction()
 
