@@ -2,11 +2,8 @@
 
 namespace tcapi {
 
-  // In this library, only the CytnxContextHandle specializations below have non-deleted
-  // definitions. Deleting the primary templates makes a call that resolves to any other
-  // specialization the library does not define a compile error instead of an undefined reference
-  // at link time. A deleted definition must be the first declaration of its template, so the
-  // deletions open this header.
+  // Deleted so that a call to a specialization no one has declared fails to compile instead of to
+  // link. A deleted definition must be the first declaration, hence the top of the header.
 
   /**
    * @brief Create context handle (in-place version)
@@ -30,10 +27,9 @@ namespace tcapi {
 
   class CytnxContextHandle;
 
-  // The friend declaration in CytnxContextHandle names the create_context specialization, so the
-  // specializations are declared ahead of the class. Declared after it, they would follow the
-  // friend declaration that names one of them, and clang then rejects create_context(ctx) on a
-  // handle as a call to the deleted primary.
+  // Declared ahead of CytnxContextHandle, whose friend declaration names the create_context
+  // specialization: declared after it, clang rejects create_context(ctx) on a handle as a call to
+  // the deleted primary.
 
   /// @brief Create context handle (in-place version), targeting GPU 0 when Cytnx reports a GPU
   /// and the CPU otherwise
