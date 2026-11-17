@@ -28,7 +28,8 @@
         "CMAKE_TOOLCHAIN_FILE": "cmake/toolchains/macos-homebrew.cmake",
         "BUILD_EXAMPLES": "OFF",
         "CMAKE_BUILD_TYPE": "Release",
-        "CMAKE_CXX_STANDARD": "20"
+        "CMAKE_CXX_STANDARD": "20",
+        "TCAPI_BUILD_TESTS": "ON"
       },
       "environment": {
         "LDFLAGS": "-L/opt/homebrew/opt/libomp/lib",
@@ -118,32 +119,34 @@
   ],
   "testPresets": [
     {
-      "name": "brew-release",
-      "configurePreset": "brew-release",
+      "name": "test-defaults",
+      "hidden": true,
       "environment": {
         "CTEST_OUTPUT_ON_FAILURE": "1"
+      },
+      "execution": {
+        "noTestsAction": "error"
       }
+    },
+    {
+      "name": "brew-release",
+      "inherits": "test-defaults",
+      "configurePreset": "brew-release"
     },
     {
       "name": "brew-debug",
-      "configurePreset": "brew-debug",
-      "environment": {
-        "CTEST_OUTPUT_ON_FAILURE": "1"
-      }
+      "inherits": "test-defaults",
+      "configurePreset": "brew-debug"
     },
     {
       "name": "intel-debug",
-      "configurePreset": "intel-debug",
-      "environment": {
-        "CTEST_OUTPUT_ON_FAILURE": "1"
-      }
+      "inherits": "test-defaults",
+      "configurePreset": "intel-debug"
     },
     {
       "name": "intel-release",
-      "configurePreset": "intel-release",
-      "environment": {
-        "CTEST_OUTPUT_ON_FAILURE": "1"
-      }
+      "inherits": "test-defaults",
+      "configurePreset": "intel-release"
     }
   ]
 }
