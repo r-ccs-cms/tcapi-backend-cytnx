@@ -27,10 +27,6 @@ namespace tcapi {
 
   class CytnxContextHandle;
 
-  // Declared ahead of CytnxContextHandle, whose friend declaration names the create_context
-  // specialization: declared after it, clang rejects create_context(ctx) on a handle as a call to
-  // the deleted primary.
-
   /// @brief Create context handle (in-place version), targeting GPU 0 when Cytnx reports a GPU
   /// and the CPU otherwise
   template <> void create_context(CytnxContextHandle& ctx);
@@ -56,7 +52,7 @@ namespace tcapi {
     void set_value(int v) { value_ = v; }
 
     // Friend declarations to allow create_context access
-    friend void create_context<>(CytnxContextHandle& ctx);
+    template <typename T> friend void create_context(T& ctx);
     friend void create_context(CytnxContextHandle& ctx, int gpu_id);
 
   public:
