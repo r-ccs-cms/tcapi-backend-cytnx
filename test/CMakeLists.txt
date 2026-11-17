@@ -19,6 +19,13 @@ if (doctest_ADDED)
   add_library(doctest::doctest ALIAS doctest)
 endif()
 
+# Configured on its own, this test project is the top-level build of this
+# repository, so the warnings default to ON as they do for a configure from the
+# root, although TCAPI added below is not the top-level project.
+if(PROJECT_IS_TOP_LEVEL)
+  option(TCAPI_ENABLE_WARNINGS "Compile TCAPI, its examples and its tests with this repository's warning flags" ON)
+endif()
+
 if(NOT TARGET TCAPI::TCAPI)
   CPMAddPackage(NAME TCAPI SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/..)
 endif()
@@ -33,12 +40,9 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
 message(STATUS "Created test executable: ${PROJECT_NAME}")
 
-# enable compiler warnings
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-  target_compile_options(TCAPI PUBLIC -Wall -Wpedantic -Wextra)
-elseif(MSVC)
-  target_compile_options(TCAPI PUBLIC /W4 /WX)
-  target_compile_definitions(${PROJECT_NAME} PUBLIC DOCTEST_CONFIG_USE_STD_HEADERS)
+tcapi_enable_warnings(${PROJECT_NAME})
+if(MSVC)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
 endif()
 
 # ---- Add TCAPITests ----

@@ -282,6 +282,29 @@ set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
 # being a cross-platform target, we enforce standards conformance on MSVC
 target_compile_options(${PROJECT_NAME} PUBLIC "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/permissive->")
 
+# ---- Compiler warnings ----
+
+# Compiler warnings are this repository's development policy, not a usage
+# requirement: they are added PRIVATE, so no target that links TCAPI inherits
+# them. TCAPI_ENABLE_WARNINGS turns them on or off. This declaration defaults it
+# to ON when TCAPI is the top-level project and to OFF otherwise, so a project
+# that adds this repository as a subdirectory compiles it with its own flags
+# unless that project sets the option.
+option(TCAPI_ENABLE_WARNINGS "Compile TCAPI, its examples and its tests with this repository's warning flags" ${PROJECT_IS_TOP_LEVEL})
+
+function(tcapi_enable_warnings target)
+  if(NOT TCAPI_ENABLE_WARNINGS)
+    return()
+  endif()
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    target_compile_options(${target} PRIVATE -Wall -Wpedantic -Wextra)
+  elseif(MSVC)
+    target_compile_options(${target} PRIVATE /W4 /WX)
+  endif()
+endfunction()
+
+tcapi_enable_warnings(${PROJECT_NAME})
+
 # ---- AddressSanitizer ODR Detection Configuration ----
 
 # Function to configure ASAN ODR detection
