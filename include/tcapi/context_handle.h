@@ -8,9 +8,9 @@ namespace tcapi {
   /**
    * @brief Create context handle (in-place version)
    *
-   * @tparam ContextHandleT Context handle type. This library defines the template for
-   * CytnxContextHandle only: with any other template argument, deduced or named, a call does not
-   * compile unless the program declares its own explicit specialization for that type.
+   * @tparam ContextHandleT Context handle type. This library defines only the CytnxContextHandle
+   * specialization: with any other template argument, deduced or named, a call does not compile
+   * unless the program declares its own explicit specialization for that type.
    * @param ctx Context handle to initialize
    */
   template <typename ContextHandleT> void create_context(ContextHandleT& ctx) = delete;
@@ -18,9 +18,9 @@ namespace tcapi {
   /**
    * @brief Destroy context handle
    *
-   * @tparam ContextHandleT Context handle type. This library defines the template for
-   * CytnxContextHandle only: with any other template argument, deduced or named, a call does not
-   * compile unless the program declares its own explicit specialization for that type.
+   * @tparam ContextHandleT Context handle type. This library defines only the CytnxContextHandle
+   * specialization: with any other template argument, deduced or named, a call does not compile
+   * unless the program declares its own explicit specialization for that type.
    * @param ctx Context handle to destroy
    */
   template <typename ContextHandleT> void destroy_context(ContextHandleT& ctx) = delete;
