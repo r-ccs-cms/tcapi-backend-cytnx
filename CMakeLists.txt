@@ -24,15 +24,15 @@ project(
 # ---- Supported compilers ----
 
 # This repository's CMake passes compiler flags in GNU command-line syntax only.
-# CMake sets MSVC for every compiler that takes MSVC's cl syntax instead,
-# including clang-cl and icx on Windows, so stop here rather than hand them
-# flags written for the other syntax.
+# CMake sets MSVC for every compiler it drives with MSVC's cl syntax instead,
+# including clang-cl and every Intel oneAPI compiler on Windows, so stop here
+# rather than hand them flags written for the other syntax.
 if(MSVC)
   message(
     FATAL_ERROR
-      "Compilers that take MSVC's cl command-line syntax are not supported "
+      "Compilers that CMake drives with MSVC's cl command-line syntax are not supported "
       "(found ${CMAKE_CXX_COMPILER_ID}: ${CMAKE_CXX_COMPILER}). "
-      "Configure with GCC, Clang, or Intel oneAPI icpx instead."
+      "Configure with GCC or Clang, or with Intel oneAPI icpx on Linux, instead."
   )
 endif()
 
@@ -310,7 +310,7 @@ function(tcapi_enable_warnings target)
   endif()
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang"
      OR CMAKE_CXX_COMPILER_ID MATCHES "GNU"
-     OR CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
+     OR CMAKE_CXX_COMPILER_ID MATCHES "IntelLLVM")
     target_compile_options(${target} PRIVATE -Wall -Wpedantic -Wextra)
   endif()
 endfunction()
