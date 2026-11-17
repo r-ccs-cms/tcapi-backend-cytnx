@@ -2,9 +2,38 @@
 
 namespace tcapi {
 
-  // Forward declarations
-  template <typename ContextHandleT> void create_context(ContextHandleT& ctx);
+  // Deleted so that a call to a specialization no one has declared fails to compile instead of to
+  // link. A deleted definition must be the first declaration, hence the top of the header.
+
+  /**
+   * @brief Create context handle (in-place version)
+   *
+   * @tparam ContextHandleT Context handle type. This library defines only the CytnxContextHandle
+   * specialization: with any other template argument, deduced or named, a call does not compile
+   * unless the program declares its own explicit specialization for that type.
+   * @param ctx Context handle to initialize
+   */
+  template <typename ContextHandleT> void create_context(ContextHandleT& ctx) = delete;
+
+  /**
+   * @brief Destroy context handle
+   *
+   * @tparam ContextHandleT Context handle type. This library defines only the CytnxContextHandle
+   * specialization: with any other template argument, deduced or named, a call does not compile
+   * unless the program declares its own explicit specialization for that type.
+   * @param ctx Context handle to destroy
+   */
+  template <typename ContextHandleT> void destroy_context(ContextHandleT& ctx) = delete;
+
   class CytnxContextHandle;
+
+  /// @brief Create context handle (in-place version), targeting GPU 0 when Cytnx reports a GPU
+  /// and the CPU otherwise
+  template <> void create_context(CytnxContextHandle& ctx);
+
+  /// @brief Destroy context handle
+  template <> void destroy_context(CytnxContextHandle& ctx);
+
   void create_context(CytnxContextHandle& ctx, int gpu_id);
 
   /**
