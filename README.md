@@ -12,7 +12,7 @@
 ### Required
 
 - **CMake 3.25+**: Required for Cytnx
-- **C++20 compiler with a GNU-style command line**: GCC, Clang (AppleClang included), or Intel oneAPI icpx, whose standard library provides `std::format`, which Cytnx requires: libstdc++ from GCC 13 or later, or libc++ from LLVM 17 or later. Clang must be 16 or later to build against libstdc++. AppleClang uses the libc++ that comes with Xcode or its Command Line Tools, which carries no LLVM release number; configure checks it for `std::format` and stops with an error when it is missing
+- **C++20 compiler with a GNU-style command line**: GCC, Clang (AppleClang included), or Intel oneAPI icpx, whose standard library provides `std::format`, which Cytnx requires: libstdc++ from GCC 13 or later, or libc++ from LLVM 17 or later; configure checks for `std::format` and stops with an error when it is missing. With libstdc++, Clang must also be 16 or later, which configure does not check. AppleClang uses the libc++ that comes with Xcode or its Command Line Tools, which carries no LLVM release number
 - **Not supported**: compilers that CMake drives with MSVC's `cl` command-line syntax (MSVC, clang-cl, and the Intel oneAPI compilers on Windows); configuring with one stops with an error. Intel's classic `icpc` is not supported either: it cannot compile libstdc++'s `<format>`, which Cytnx requires
 - **BLAS/LAPACK**: OpenBLAS recommended
 - **Cytnx**: Included as git submodule
@@ -39,7 +39,7 @@ cd tcapi-backend-cytnx
 brew install openblas llvm libomp cmake boost arpack ninja
 ```
 
-The `brew*` presets build with AppleClang, the system `c++`, unless `CC` and `CXX` select another compiler; `llvm` is optional.
+The `brew*` presets build with AppleClang, the system `c++`, unless another compiler is selected; `llvm` is optional.
 
 #### Linux with Intel oneAPI (HPC environments)
 
