@@ -44,7 +44,10 @@ tcapi_enable_warnings(${PROJECT_NAME})
 
 # ---- Add TCAPITests ----
 
-enable_testing()
+# A configure from the root enables testing before adding this directory.
+if(PROJECT_IS_TOP_LEVEL)
+  enable_testing()
+endif()
 add_test(NAME ${PROJECT_NAME} COMMAND ${PROJECT_NAME})
 
 # Run the examples that read decomposition outputs, so a change to an output's
