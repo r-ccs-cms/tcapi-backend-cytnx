@@ -10,7 +10,29 @@
 
 namespace tcapi {
 
-  // Forward declaration of tensor_traits
+  /**
+   * @brief Associated types of a tensor type
+   *
+   * Each tensor library implementation specializes tensor_traits for its tensor types. A
+   * specialization defines these member types:
+   * - ten_t: The actual type of TenT
+   * - order_t: Type for tensor order (integer)
+   * - shape_t: Type for tensor shape (List<bond_dim_t>)
+   * - bond_dim_t: Type for bond dimension (integer)
+   * - bond_idx_t: Type for bond index (integer)
+   * - bond_label_t: Type for bond label (signed integer)
+   * - ten_size_t: Type for tensor size (integer)
+   * - elem_t: Type for tensor elements (real or complex floating point)
+   * - elem_coor_t: Type for element coordinate (integer)
+   * - elem_coors_t: Type for element coordinates (List<elem_coor_t>)
+   * - real_t: Type for real floating point numbers
+   * - real_ten_t: Type for real tensors
+   * - cplx_t: Type for complex floating point numbers
+   * - cplx_ten_t: Type for complex tensors
+   * - context_handle_t: Type for library context handle
+   *
+   * @tparam TenT The tensor type from the underlying library
+   */
   template <typename TenT> struct tensor_traits;
 
   // Auxiliary types as specified in the TCAPI standard
@@ -64,34 +86,5 @@ namespace tcapi {
 
   template <typename TenT> using bond_idx_elem_coor_pair_map
       = Map<bond_idx_t<TenT>, Pair<elem_coor_t<TenT>, elem_coor_t<TenT>>>;
-
-  /**
-   * @brief Primary template for tensor_traits
-   *
-   * This struct must be specialized for each tensor library implementation.
-   * It provides type information and context handling for the underlying tensor type.
-   *
-   * @tparam TenT The tensor type from the underlying library
-   */
-  template <typename TenT> struct tensor_traits {
-    // Member types that must be defined in specializations:
-    // - ten_t: The actual type of TenT
-    // - order_t: Type for tensor order (integer)
-    // - shape_t: Type for tensor shape (List<bond_dim_t>)
-    // - bond_dim_t: Type for bond dimension (integer)
-    // - bond_idx_t: Type for bond index (integer)
-    // - bond_label_t: Type for bond label (signed integer)
-    // - ten_size_t: Type for tensor size (integer)
-    // - elem_t: Type for tensor elements (real or complex floating point)
-    // - elem_coor_t: Type for element coordinate (integer)
-    // - elem_coors_t: Type for element coordinates (List<elem_coor_t>)
-    // - real_t: Type for real floating point numbers
-    // - real_ten_t: Type for real tensors
-    // - cplx_t: Type for complex floating point numbers
-    // - cplx_ten_t: Type for complex tensors
-    // - context_handle_t: Type for library context handle
-
-    static_assert(sizeof(TenT) == 0, "tensor_traits must be specialized for each tensor type");
-  };
 
 }  // namespace tcapi
