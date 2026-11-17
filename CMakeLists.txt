@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.24) # Required for Cytnx
+cmake_minimum_required(VERSION 3.25) # Required for Cytnx
 
 # Fix toolchain file path for subdirectories (like Cytnx)
 # Convert relative paths to absolute paths BEFORE project() to ensure subprojects can find the toolchain
