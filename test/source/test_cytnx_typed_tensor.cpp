@@ -208,12 +208,21 @@ TEST_CASE_TEMPLATE_APPLY(context_routines_reject_tensor, tcapi::supported_ten_ty
 
 // A const handle deduces const CytnxContextHandle, and a class derived from the handle deduces
 // itself, since deduction against ContextHandleT& keeps the cv-qualifier and does not convert to a
-// base. Neither is CytnxContextHandle, so for both the templates drop out of overload resolution.
+// base. Neither is CytnxContextHandle, so for both, deduced or named as the template argument, the
+// templates drop out of overload resolution.
 TEST_CASE("CytnxTensor - context routines reject a const or derived handle") {
   static_assert(!detected<create_context_deduced_call, const tcapi::CytnxContextHandle>::value);
   static_assert(!detected<destroy_context_deduced_call, const tcapi::CytnxContextHandle>::value);
   static_assert(!detected<create_context_deduced_call, DerivedContextHandle>::value);
   static_assert(!detected<destroy_context_deduced_call, DerivedContextHandle>::value);
+  static_assert(!detected<create_context_named_call, const tcapi::CytnxContextHandle,
+                          const tcapi::CytnxContextHandle>::value);
+  static_assert(!detected<destroy_context_named_call, const tcapi::CytnxContextHandle,
+                          const tcapi::CytnxContextHandle>::value);
+  static_assert(
+      !detected<create_context_named_call, DerivedContextHandle, DerivedContextHandle>::value);
+  static_assert(
+      !detected<destroy_context_named_call, DerivedContextHandle, DerivedContextHandle>::value);
 }
 
 TEST_CASE("CytnxTensor - Construction") {

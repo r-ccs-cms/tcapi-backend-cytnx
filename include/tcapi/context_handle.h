@@ -20,8 +20,7 @@ namespace tcapi {
    *
    * @tparam ContextHandleT Context handle type. The template takes part in overload resolution
    * only for CytnxContextHandle. With any other template argument, deduced or named, it drops
-   * out, so an unqualified call that argument-dependent lookup routes into tcapi selects the
-   * caller's own function of the same name.
+   * out.
    * @param ctx Context handle to initialize
    */
   template <typename ContextHandleT>
@@ -32,8 +31,7 @@ namespace tcapi {
    *
    * @tparam ContextHandleT Context handle type. The template takes part in overload resolution
    * only for CytnxContextHandle. With any other template argument, deduced or named, it drops
-   * out, so an unqualified call that argument-dependent lookup routes into tcapi selects the
-   * caller's own function of the same name.
+   * out.
    * @param ctx Context handle to destroy
    */
   template <typename ContextHandleT>
