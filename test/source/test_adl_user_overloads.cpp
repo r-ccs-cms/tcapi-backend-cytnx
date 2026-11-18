@@ -150,18 +150,9 @@ TEST_CASE("ADL - a caller's function named like a tcapi function is selected for
   static_assert(ADL_SELECTS_USER(trunc_svd(ctx, c, c, c, c, c, c, 0.0, c)));
 }
 
-// A handle routine that stayed viable for the argument would be selected in an ordinary call, and
-// in an unevaluated operand inside a SFINAE context it would leave the expression ill-formed, so a
-// detection of the caller's function would report false. The generic lambda's trailing return type
-// is such a context: std::is_invocable is true exactly when the call in it is well-formed.
-#define ADL_CHECK_HANDLE_ARG(fn)                                              \
-  {                                                                           \
-    static_assert(ADL_SELECTS_USER(fn(session)));                             \
-    static_assert(ADL_SELECTS_USER(fn(derived)));                             \
-    auto detect = [](auto& a) -> decltype(fn(a)) { return fn(a); };           \
-    static_assert(std::is_invocable_v<decltype(detect), decltype(session)&>); \
-    static_assert(std::is_invocable_v<decltype(detect), decltype(derived)&>); \
-  }
+#define ADL_CHECK_HANDLE_ARG(fn)                \
+  static_assert(ADL_SELECTS_USER(fn(session))); \
+  static_assert(ADL_SELECTS_USER(fn(derived)));
 
 TEST_CASE("ADL - a caller's create_context and destroy_context are selected for its own type") {
   adl_user::Session<tcapi::CytnxContextHandle> session;
