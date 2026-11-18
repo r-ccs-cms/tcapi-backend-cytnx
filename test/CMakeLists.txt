@@ -44,13 +44,15 @@ tcapi_enable_warnings(${PROJECT_NAME})
 
 # ---- Add TCAPITests ----
 
+# A configure from the root has already enabled testing before adding this
+# directory. This call is for a configure of test/ on its own; after the root's
+# call it changes nothing.
 enable_testing()
 add_test(NAME ${PROJECT_NAME} COMMAND ${PROJECT_NAME})
 
 # Run the examples that read decomposition outputs, so a change to an output's
-# shape fails this test project's ctest (configured with -Stest) instead of
-# only the example binary. They exist when the parent project is
-# configured with BUILD_EXAMPLES (on by default).
+# shape fails ctest instead of only the example binary. They exist when the
+# parent project is configured with BUILD_EXAMPLES (on by default).
 foreach(example svd_example simple_tensor_operations)
   if(TARGET ${example})
     add_test(NAME example_${example} COMMAND ${example})

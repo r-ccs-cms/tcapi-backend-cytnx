@@ -469,5 +469,6 @@ endif()
 # ---- Optional test suite ----
 option(TCAPI_BUILD_TESTS "Build the TCAPI test suite" OFF)
 if(TCAPI_BUILD_TESTS)
+  enable_testing()
   add_subdirectory(test)
 endif()
