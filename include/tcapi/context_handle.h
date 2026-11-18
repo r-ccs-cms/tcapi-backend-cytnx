@@ -8,9 +8,8 @@ namespace tcapi {
 
   namespace detail {
 
-    // Return type of create_context and destroy_context: void for CytnxContextHandle, and a
-    // substitution failure for any other type. The friend declaration in CytnxContextHandle names
-    // the same alias, so that it redeclares the primary instead of declaring a second template.
+    // Return type of the create_context and destroy_context templates: void for
+    // CytnxContextHandle, and a substitution failure for any other type.
     template <typename ContextHandleT> using if_cytnx_context_handle_t
         = std::enable_if_t<std::is_same_v<ContextHandleT, CytnxContextHandle>>;
 
