@@ -6,7 +6,7 @@
 if(DEFINED ENV{CC})
   set(CMAKE_C_COMPILER $ENV{CC} CACHE FILEPATH "C compiler")
 else()
-  find_program(CMAKE_C_COMPILER NAMES icx icc REQUIRED)
+  find_program(CMAKE_C_COMPILER NAMES icx REQUIRED)
   # Set environment variable so subprojects (Cytnx, ARPACK) use the same compiler
   set(ENV{CC} ${CMAKE_C_COMPILER})
 endif()
@@ -14,7 +14,7 @@ endif()
 if(DEFINED ENV{CXX})
   set(CMAKE_CXX_COMPILER $ENV{CXX} CACHE FILEPATH "C++ compiler")
 else()
-  find_program(CMAKE_CXX_COMPILER NAMES icpx icpc REQUIRED)
+  find_program(CMAKE_CXX_COMPILER NAMES icpx REQUIRED)
   # Set environment variable so subprojects (Cytnx, ARPACK) use the same compiler
   set(ENV{CXX} ${CMAKE_CXX_COMPILER})
 endif()
