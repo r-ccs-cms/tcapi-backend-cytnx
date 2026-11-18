@@ -1,31 +1,44 @@
 #pragma once
 
+#include <type_traits>
+
 namespace tcapi {
 
-  // Deleted so that a call to a specialization no one has declared fails to compile instead of to
-  // link. A deleted definition must be the first declaration, hence the top of the header.
+  class CytnxContextHandle;
+
+  namespace detail {
+
+    // Return type of create_context and destroy_context: void for CytnxContextHandle, and a
+    // substitution failure for any other type. The friend declaration in CytnxContextHandle names
+    // the same alias, so that it redeclares the primary instead of declaring a second template.
+    template <typename ContextHandleT> using if_cytnx_context_handle_t
+        = std::enable_if_t<std::is_same_v<ContextHandleT, CytnxContextHandle>>;
+
+  }  // namespace detail
 
   /**
    * @brief Create context handle (in-place version)
    *
-   * @tparam ContextHandleT Context handle type. This library defines only the CytnxContextHandle
-   * specialization: with any other template argument, deduced or named, a call does not compile
-   * unless the program declares its own explicit specialization for that type.
+   * @tparam ContextHandleT Context handle type. The template takes part in overload resolution
+   * only for CytnxContextHandle. With any other template argument, deduced or named, it drops
+   * out, so an unqualified call that argument-dependent lookup routes into tcapi selects the
+   * caller's own function of the same name.
    * @param ctx Context handle to initialize
    */
-  template <typename ContextHandleT> void create_context(ContextHandleT& ctx) = delete;
+  template <typename ContextHandleT>
+  detail::if_cytnx_context_handle_t<ContextHandleT> create_context(ContextHandleT& ctx);
 
   /**
    * @brief Destroy context handle
    *
-   * @tparam ContextHandleT Context handle type. This library defines only the CytnxContextHandle
-   * specialization: with any other template argument, deduced or named, a call does not compile
-   * unless the program declares its own explicit specialization for that type.
+   * @tparam ContextHandleT Context handle type. The template takes part in overload resolution
+   * only for CytnxContextHandle. With any other template argument, deduced or named, it drops
+   * out, so an unqualified call that argument-dependent lookup routes into tcapi selects the
+   * caller's own function of the same name.
    * @param ctx Context handle to destroy
    */
-  template <typename ContextHandleT> void destroy_context(ContextHandleT& ctx) = delete;
-
-  class CytnxContextHandle;
+  template <typename ContextHandleT>
+  detail::if_cytnx_context_handle_t<ContextHandleT> destroy_context(ContextHandleT& ctx);
 
   /// @brief Create context handle (in-place version), targeting GPU 0 when Cytnx reports a GPU
   /// and the CPU otherwise
@@ -52,7 +65,7 @@ namespace tcapi {
     void set_value(int v) { value_ = v; }
 
     // Friend declarations to allow create_context access
-    template <typename T> friend void create_context(T& ctx);
+    template <typename T> friend detail::if_cytnx_context_handle_t<T> create_context(T& ctx);
     friend void create_context(CytnxContextHandle& ctx, int gpu_id);
 
   public:
