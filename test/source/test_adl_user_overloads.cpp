@@ -12,6 +12,8 @@
 // check at compile time that the call selects the caller's function. The caller's function takes
 // every argument by const reference, so a tcapi template that stayed viable would bind the context
 // at least as well and, being more specialized than a parameter pack, would win the call instead.
+// The same check covers create_context and destroy_context, templates over a handle type, called
+// with a type that brings tcapi into the lookup without being CytnxContextHandle.
 
 // The public tcapi function templates over a tensor type TenT deduced from a TenT argument, and
 // those deducing it from a List<CRef<TenT>> argument. A new public function of either kind joins
@@ -65,12 +67,18 @@
   X(stack)                    \
   X(linear_combine)
 
+// The public tcapi function templates over a context handle type deduced from a handle argument.
+#define ADL_HANDLE_ARG_NAMES(X) \
+  X(create_context)             \
+  X(destroy_context)
+
 // Every listed name must be a tcapi function, or the checks below would pass with no tcapi
 // candidate to discard; a using-declaration of a name tcapi does not declare fails to compile.
 namespace adl_tcapi_names {
 #define ADL_TCAPI_DECLARES(fn) using tcapi::fn;
   ADL_TENSOR_ARG_NAMES(ADL_TCAPI_DECLARES)
   ADL_LIST_ARG_NAMES(ADL_TCAPI_DECLARES)
+  ADL_HANDLE_ARG_NAMES(ADL_TCAPI_DECLARES)
 #undef ADL_TCAPI_DECLARES
 }  // namespace adl_tcapi_names
 
@@ -82,10 +90,19 @@ namespace adl_user {
 
   struct Hit {};
 
+  // Each brings tcapi into argument-dependent lookup without being CytnxContextHandle: Session
+  // through its template argument, DerivedHandle through its base class.
+  template <typename H> struct Session {
+    H h;
+  };
+
+  struct DerivedHandle : tcapi::CytnxContextHandle {};
+
 #define ADL_USER_DEFINE(fn) \
   template <typename... Args> Hit fn(const Args&...) { return Hit{}; }
   ADL_TENSOR_ARG_NAMES(ADL_USER_DEFINE)
   ADL_LIST_ARG_NAMES(ADL_USER_DEFINE)
+  ADL_HANDLE_ARG_NAMES(ADL_USER_DEFINE)
 #undef ADL_USER_DEFINE
 
 }  // namespace adl_user
@@ -133,9 +150,22 @@ TEST_CASE("ADL - a caller's function named like a tcapi function is selected for
   static_assert(ADL_SELECTS_USER(trunc_svd(ctx, c, c, c, c, c, c, 0.0, c)));
 }
 
+#define ADL_CHECK_HANDLE_ARG(fn)                \
+  static_assert(ADL_SELECTS_USER(fn(session))); \
+  static_assert(ADL_SELECTS_USER(fn(derived)));
+
+TEST_CASE("ADL - a caller's create_context and destroy_context are selected for its own type") {
+  adl_user::Session<tcapi::CytnxContextHandle> session;
+  adl_user::DerivedHandle derived;
+
+  ADL_HANDLE_ARG_NAMES(ADL_CHECK_HANDLE_ARG)
+}
+
+#undef ADL_CHECK_HANDLE_ARG
 #undef ADL_CHECK_LIST_ARG
 #undef ADL_CHECK_TENSOR_ARG
 #undef ADL_CHECK_SELECTED
 #undef ADL_SELECTS_USER
+#undef ADL_HANDLE_ARG_NAMES
 #undef ADL_LIST_ARG_NAMES
 #undef ADL_TENSOR_ARG_NAMES
