@@ -71,7 +71,8 @@ namespace tcapi::detail {
         std::error_code ec;
         std::filesystem::create_directories(parent, ec);
         if (ec) {
-          throw std::runtime_error("tcapi::save failed to create directories: " + ec.message());
+          throw std::runtime_error("tcapi::save failed to create directories for " + path.string()
+                                   + ": " + ec.message());
         }
       }
     }
@@ -156,8 +157,9 @@ namespace tcapi::detail {
       }
     }
 
-    // Cytnx fails to save a default-constructed tensor only after truncating the target file, so
-    // this runs before anything is opened. `target` names where the tensor was to be written.
+    // Cytnx fails to write a default-constructed tensor only after the target file has been opened
+    // and truncated, so this runs before anything is opened. `target` names where the tensor was
+    // to be written.
     inline void require_savable(const cytnx::Tensor& a, const std::string& target) {
       if (a.is_void()) {
         throw std::runtime_error("tcapi::save: cannot save a default-constructed tensor to "
@@ -165,20 +167,33 @@ namespace tcapi::detail {
       }
     }
 
-    inline void save_to_path(const cytnx::Tensor& a, const std::filesystem::path& path) {
+    // Opens `path` for writing a tensor, truncating any file there.
+    inline std::fstream open_for_save(const std::filesystem::path& path) {
       ensure_parent_exists(path);
-
-      if (path.extension() == ".cytn") {
-        // cytnx Save appends .cytn when the path has no extension,
-        // so strip it here to get the correct output path.
-        auto base = path;
-        base.replace_extension();
-        a.Save(base.string());
-      } else {
-        // cytnx Save writes directly to the given path when it
-        // already has an extension (e.g. ".dat", ".bin").
-        a.Save(path.string());
+      std::fstream out(path, std::ios::out | std::ios::trunc | std::ios::binary);
+      if (!out.is_open()) {
+        throw std::runtime_error("tcapi::save could not open file for writing: " + path.string());
       }
+      return out;
+    }
+
+    // Writes `a` to `out`, opened on `path`, and closes it, so that the file is complete once
+    // this returns. Cytnx's Tensor::Save would write a path without an extension to
+    // `<path>.cytn`, and Cytnx has no other public call that writes a tensor to a file of the
+    // caller's choosing; _Save writes to the stream it is given, so the file written is the path
+    // tcapi::load reads.
+    inline void write_and_close(const cytnx::Tensor& a, std::fstream& out,
+                                const std::filesystem::path& path) {
+      a._Save(out);
+      out.close();
+      if (out.fail()) {
+        throw std::runtime_error("tcapi::save failed while writing: " + path.string());
+      }
+    }
+
+    inline void save_to_path(const cytnx::Tensor& a, const std::filesystem::path& path) {
+      auto out = open_for_save(path);
+      write_and_close(a, out, path);
     }
 
   }  // namespace
@@ -274,8 +289,10 @@ namespace tcapi::detail {
       (void)ctx;
       require_savable(a.backend, "a stream");
       auto tmp_path = make_temp_cytn_file();
-      save_to_path(a.backend, tmp_path);
+      // A failed open created nothing at tmp_path, so only what follows removes it on failure.
+      auto tmp_out = open_for_save(tmp_path);
       try {
+        write_and_close(a.backend, tmp_out, tmp_path);
         copy_file_to_stream(tmp_path, strg);
       } catch (...) {
         remove_file_silent(tmp_path);
