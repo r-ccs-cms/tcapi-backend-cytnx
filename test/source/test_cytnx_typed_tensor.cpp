@@ -192,7 +192,7 @@ TEST_CASE_TEMPLATE_APPLY(context_routines_explicit_argument, tcapi::supported_te
 
 // The create_context and destroy_context templates take part in overload resolution only for
 // CytnxContextHandle, so a call on a tensor, whether the tensor type is deduced or named as the
-// template argument, has no viable function and is rejected when it is compiled.
+// template argument, is ill-formed and rejected when it is compiled.
 TEST_CASE_TEMPLATE_DEFINE("CytnxTensor - context routines reject a tensor argument", Tensor,
                           context_routines_reject_tensor) {
   using Handle = tcapi::context_handle_t<Tensor>;
@@ -209,7 +209,7 @@ TEST_CASE_TEMPLATE_APPLY(context_routines_reject_tensor, tcapi::supported_ten_ty
 // A const handle deduces const CytnxContextHandle, and a class derived from the handle deduces
 // itself, since deduction against ContextHandleT& keeps the cv-qualifier and does not convert to a
 // base. Neither is CytnxContextHandle, so for both, deduced or named as the template argument, the
-// templates drop out of overload resolution.
+// call is ill-formed.
 TEST_CASE("CytnxTensor - context routines reject a const or derived handle") {
   static_assert(!detected<create_context_deduced_call, const tcapi::CytnxContextHandle>::value);
   static_assert(!detected<destroy_context_deduced_call, const tcapi::CytnxContextHandle>::value);
