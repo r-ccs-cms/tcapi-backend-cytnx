@@ -24,9 +24,7 @@ namespace tcapi {
    *
    * @tparam ContextHandleT Context handle type. With the second template argument left to its
    * default, the template takes part in overload resolution only for CytnxContextHandle, and for
-   * any other ContextHandleT, deduced or named, it drops out. A program with its own handle type
-   * declares, in namespace tcapi, its own create_context template constrained to that type in its
-   * return type.
+   * any other ContextHandleT, deduced or named, it drops out.
    * @param ctx Context handle to initialize
    */
   template <typename ContextHandleT, typename = detail::if_cytnx_context_handle_t<ContextHandleT>>
@@ -37,9 +35,7 @@ namespace tcapi {
    *
    * @tparam ContextHandleT Context handle type. With the second template argument left to its
    * default, the template takes part in overload resolution only for CytnxContextHandle, and for
-   * any other ContextHandleT, deduced or named, it drops out. A program with its own handle type
-   * declares, in namespace tcapi, its own destroy_context template constrained to that type in its
-   * return type.
+   * any other ContextHandleT, deduced or named, it drops out.
    * @param ctx Context handle to destroy
    */
   template <typename ContextHandleT, typename = detail::if_cytnx_context_handle_t<ContextHandleT>>
