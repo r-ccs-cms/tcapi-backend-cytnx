@@ -172,6 +172,14 @@ namespace {
   template <typename Arg> using destroy_context_deduced_call
       = decltype(tcapi::destroy_context(std::declval<Arg&>()));
 
+  // create_context<Handle, Second>(ctx) and destroy_context<Handle, Second>(ctx) for an lvalue ctx
+  // of type Handle, with the second template argument named instead of defaulted.
+  template <typename Handle, typename Second> using create_context_second_named_call
+      = decltype(tcapi::create_context<Handle, Second>(std::declval<Handle&>()));
+
+  template <typename Handle, typename Second> using destroy_context_second_named_call
+      = decltype(tcapi::destroy_context<Handle, Second>(std::declval<Handle&>()));
+
   struct DerivedContextHandle : tcapi::CytnxContextHandle {};
 
 }  // namespace
@@ -190,9 +198,8 @@ TEST_CASE_TEMPLATE_DEFINE(
 
 TEST_CASE_TEMPLATE_APPLY(context_routines_explicit_argument, tcapi::supported_ten_types_t);
 
-// The create_context and destroy_context templates take part in overload resolution only for
-// CytnxContextHandle, so a call on a tensor, whether the tensor type is deduced or named as the
-// template argument, is ill-formed and rejected when it is compiled.
+// A call to create_context or destroy_context on a tensor, whether the tensor type is deduced or
+// named as the template argument, is ill-formed and rejected when it is compiled.
 TEST_CASE_TEMPLATE_DEFINE("CytnxTensor - context routines reject a tensor argument", Tensor,
                           context_routines_reject_tensor) {
   using Handle = tcapi::context_handle_t<Tensor>;
@@ -223,6 +230,49 @@ TEST_CASE("CytnxTensor - context routines reject a const or derived handle") {
       !detected<create_context_named_call, DerivedContextHandle, DerivedContextHandle>::value);
   static_assert(
       !detected<destroy_context_named_call, DerivedContextHandle, DerivedContextHandle>::value);
+}
+
+// Naming a second template argument other than its default, void, selects a specialization of the
+// primary that the library does not declare, so the call reaches the deleted definition and is
+// ill-formed. Without the deletion it would compile and fail only when linked.
+TEST_CASE("CytnxTensor - context routines reject a second template argument other than void") {
+  static_assert(!detected<create_context_second_named_call, tcapi::CytnxContextHandle, int>::value);
+  static_assert(
+      !detected<destroy_context_second_named_call, tcapi::CytnxContextHandle, int>::value);
+}
+
+// A program with its own handle type can declare, in namespace tcapi, create_context and
+// destroy_context templates constrained to that type. Its calls, with the handle type deduced or
+// named, resolve to those templates only if the library's templates drop out of overload
+// resolution for the type; otherwise both are viable and the call is ambiguous.
+namespace own_handle_test {
+  struct OwnHandle {};
+  struct OwnResult {};
+}  // namespace own_handle_test
+
+namespace tcapi {
+  template <typename T>
+  std::enable_if_t<std::is_same_v<T, own_handle_test::OwnHandle>, own_handle_test::OwnResult>
+  create_context(T&) {
+    return {};
+  }
+
+  template <typename T>
+  std::enable_if_t<std::is_same_v<T, own_handle_test::OwnHandle>, own_handle_test::OwnResult>
+  destroy_context(T&) {
+    return {};
+  }
+}  // namespace tcapi
+
+TEST_CASE("CytnxTensor - context routines leave a program's own handle type to its overloads") {
+  using own_handle_test::OwnHandle;
+  using own_handle_test::OwnResult;
+  OwnHandle own;
+
+  static_assert(std::is_same_v<decltype(tcapi::create_context(own)), OwnResult>);
+  static_assert(std::is_same_v<decltype(tcapi::create_context<OwnHandle>(own)), OwnResult>);
+  static_assert(std::is_same_v<decltype(tcapi::destroy_context(own)), OwnResult>);
+  static_assert(std::is_same_v<decltype(tcapi::destroy_context<OwnHandle>(own)), OwnResult>);
 }
 
 TEST_CASE("CytnxTensor - Construction") {
