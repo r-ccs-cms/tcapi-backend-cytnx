@@ -236,6 +236,9 @@ TEST_CASE("CytnxTensor - context routines reject a const or derived handle") {
 // primary that the library does not declare, so the call reaches the deleted definition and is
 // ill-formed. Without the deletion it would compile and fail only when linked.
 TEST_CASE("CytnxTensor - context routines reject a second template argument other than void") {
+  static_assert(detected<create_context_second_named_call, tcapi::CytnxContextHandle, void>::value);
+  static_assert(
+      detected<destroy_context_second_named_call, tcapi::CytnxContextHandle, void>::value);
   static_assert(!detected<create_context_second_named_call, tcapi::CytnxContextHandle, int>::value);
   static_assert(
       !detected<destroy_context_second_named_call, tcapi::CytnxContextHandle, int>::value);
@@ -245,10 +248,12 @@ TEST_CASE("CytnxTensor - context routines reject a second template argument othe
 // destroy_context templates constrained to that type. Its calls, with the handle type deduced or
 // named, resolve to those templates only if the library's templates drop out of overload
 // resolution for the type; otherwise both are viable and the call is ambiguous.
-namespace own_handle_test {
-  struct OwnHandle {};
-  struct OwnResult {};
-}  // namespace own_handle_test
+namespace {
+  namespace own_handle_test {
+    struct OwnHandle {};
+    struct OwnResult {};
+  }  // namespace own_handle_test
+}  // namespace
 
 namespace tcapi {
   template <typename T>
