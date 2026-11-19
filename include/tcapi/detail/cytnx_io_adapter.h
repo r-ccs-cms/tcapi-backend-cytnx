@@ -177,14 +177,19 @@ namespace tcapi::detail {
       return out;
     }
 
-    // Writes `a` to `out`, opened on `path`, and closes it, so that the file is complete once
-    // this returns. Cytnx's Tensor::Save would write a path without an extension to
-    // `<path>.cytn`, and Cytnx has no other public call that writes a tensor to a file of the
-    // caller's choosing; _Save writes to the stream it is given, so the file written is the path
-    // tcapi::load reads.
+    // Writes `a` to `out`, opened on `path`, and closes it, whether or not the write throws; once
+    // this returns, the file is complete. Tensor::Save, the call Cytnx documents for writing a
+    // tensor in the format Tensor::Load reads, would write a path without an extension to
+    // `<path>.cytn`. _Save, which Save calls once it has chosen the file, writes to the stream it
+    // is given, so the file written is the path tcapi::load reads.
     inline void write_and_close(const cytnx::Tensor& a, std::fstream& out,
                                 const std::filesystem::path& path) {
-      a._Save(out);
+      try {
+        a._Save(out);
+      } catch (...) {
+        out.close();
+        throw;
+      }
       out.close();
       if (out.fail()) {
         throw std::runtime_error("tcapi::save failed while writing: " + path.string());

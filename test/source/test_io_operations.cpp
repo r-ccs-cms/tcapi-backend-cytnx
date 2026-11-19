@@ -7,6 +7,7 @@
 #include <cytnx.hpp>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <iostream>
 #include <iterator>
 #include <sstream>
@@ -19,6 +20,8 @@
 #if defined(__unix__) || defined(__APPLE__)
 #  include <sys/resource.h>
 #endif
+
+#include <tcapict/fixture.h>
 
 #include "message_check.h"
 #include "sample_tensor.h"
@@ -148,8 +151,8 @@ namespace {
 // tcapi::load reads exactly the path it is given, so tcapi::save writes exactly
 // that path too, whatever its extension, and no other file.
 TEST_CASE("tcapi::save writes exactly the path it is given") {
-  tcapi::context_handle_t<SaveTensor> ctx;
-  tcapi::create_context(ctx);
+  tcapict::tcapi_test_fixture<SaveTensor> fix;
+  auto& ctx = fix.context();
   const SaveTensor sample = make_sample<SaveTensor>(ctx);
 
   for (const std::string name : {"noext", "x.cytn", "x.ten", "a.b.cytn"}) {
@@ -162,13 +165,11 @@ TEST_CASE("tcapi::save writes exactly the path it is given") {
     REQUIRE_NOTHROW(loaded = tcapi::load<SaveTensor>(ctx, path));
     check_real_sample(ctx, loaded);
   }
-
-  tcapi::destroy_context(ctx);
 }
 
 TEST_CASE("tcapi::save creates missing parents and replaces a longer file") {
-  tcapi::context_handle_t<SaveTensor> ctx;
-  tcapi::create_context(ctx);
+  tcapict::tcapi_test_fixture<SaveTensor> fix;
+  auto& ctx = fix.context();
   const SaveTensor sample = make_sample<SaveTensor>(ctx);
   const ScratchDir dir("tcapi_test_save_parents_and_replace");
 
@@ -187,13 +188,11 @@ TEST_CASE("tcapi::save creates missing parents and replaces a longer file") {
     CHECK(file_bytes(path).size() < longer.size());
     check_real_sample(ctx, tcapi::load<SaveTensor>(ctx, path));
   }
-
-  tcapi::destroy_context(ctx);
 }
 
 TEST_CASE("tcapi::save to a path without an extension leaves <path>.cytn alone") {
-  tcapi::context_handle_t<SaveTensor> ctx;
-  tcapi::create_context(ctx);
+  tcapict::tcapi_test_fixture<SaveTensor> fix;
+  auto& ctx = fix.context();
   const ScratchDir dir("tcapi_test_save_leaves_cytn");
   const auto unrelated = dir.path() / "p.cytn";
   write_file(unrelated, "unrelated");
@@ -201,12 +200,11 @@ TEST_CASE("tcapi::save to a path without an extension leaves <path>.cytn alone")
   tcapi::save(ctx, make_sample<SaveTensor>(ctx), dir.path() / "p");
 
   CHECK(file_bytes(unrelated) == "unrelated");
-  tcapi::destroy_context(ctx);
 }
 
 TEST_CASE("tcapi::save prints nothing to std::cerr") {
-  tcapi::context_handle_t<SaveTensor> ctx;
-  tcapi::create_context(ctx);
+  tcapict::tcapi_test_fixture<SaveTensor> fix;
+  auto& ctx = fix.context();
   const SaveTensor sample = make_sample<SaveTensor>(ctx);
   const ScratchDir dir("tcapi_test_save_no_warning");
 
@@ -220,13 +218,11 @@ TEST_CASE("tcapi::save prints nothing to std::cerr") {
     }
     CHECK(printed.empty());
   }
-
-  tcapi::destroy_context(ctx);
 }
 
 TEST_CASE("tcapi::save and tcapi::load round-trip through streams") {
-  tcapi::context_handle_t<SaveTensor> ctx;
-  tcapi::create_context(ctx);
+  tcapict::tcapi_test_fixture<SaveTensor> fix;
+  auto& ctx = fix.context();
 
   std::ostringstream out;
   std::string printed;
@@ -239,12 +235,11 @@ TEST_CASE("tcapi::save and tcapi::load round-trip through streams") {
 
   std::istringstream in(out.str());
   check_real_sample(ctx, tcapi::load<SaveTensor>(ctx, in));
-  tcapi::destroy_context(ctx);
 }
 
 TEST_CASE("tcapi::save names a path it cannot open") {
-  tcapi::context_handle_t<SaveTensor> ctx;
-  tcapi::create_context(ctx);
+  tcapict::tcapi_test_fixture<SaveTensor> fix;
+  auto& ctx = fix.context();
   const SaveTensor sample = make_sample<SaveTensor>(ctx);
   const ScratchDir dir("tcapi_test_save_cannot_open");
 
@@ -278,8 +273,18 @@ TEST_CASE("tcapi::save names a path it cannot open") {
     CHECK(std::filesystem::is_directory(temporary));
     std::filesystem::remove(temporary);
   }
+}
 
-  tcapi::destroy_context(ctx);
+// Cytnx throws while writing a default-constructed tensor; the stream is
+// closed all the same, so a caller can remove the partial file.
+TEST_CASE("tcapi::save closes its file when writing the tensor throws") {
+  const ScratchDir dir("tcapi_test_save_write_throws");
+  const auto path = dir.path() / "x.ten";
+  auto out = tcapi::detail::open_for_save(path);
+  const cytnx::Tensor empty;
+
+  CHECK_THROWS(tcapi::detail::write_and_close(empty, out, path));
+  CHECK_FALSE(out.is_open());
 }
 
 #if defined(__unix__) || defined(__APPLE__)
@@ -324,8 +329,8 @@ namespace {
 // A save whose write fails partway reports it, naming the file, and a stream
 // save removes the partial temporary file and passes nothing on.
 TEST_CASE("tcapi::save names a path it could not fully write") {
-  tcapi::context_handle_t<SaveTensor> ctx;
-  tcapi::create_context(ctx);
+  tcapict::tcapi_test_fixture<SaveTensor> fix;
+  auto& ctx = fix.context();
   const SaveTensor sample = make_sample<SaveTensor>(ctx);
   const ScratchDir dir("tcapi_test_save_write_failure");
   const auto target = dir.path() / "x.ten";
@@ -348,7 +353,6 @@ TEST_CASE("tcapi::save names a path it could not fully write") {
   check_contains(to_stream, {"failed while writing"});
   CHECK(out.str().empty());
   CHECK_FALSE(std::filesystem::exists(temporary));
-  tcapi::destroy_context(ctx);
 }
 
 #endif

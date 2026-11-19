@@ -64,6 +64,9 @@ namespace tcapi {
    * @param strg Storage object to save to; a temporary binds too, as the
    * forwarding reference TCAPI V1 declares
    * @throws std::runtime_error when `a` is default-constructed, before anything is written
+   * @throws std::runtime_error when the file a path names cannot be created, opened, or fully
+   * written, the message naming that file, or when a stream save fails to write the tensor through
+   * its temporary file or pass it on to the stream
    */
   template <typename TenT, typename Storage>
   inline void save(context_handle_t<TenT>& ctx, const TenT& a, Storage&& strg) {
