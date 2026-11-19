@@ -140,7 +140,10 @@ TEST_CASE("TCAPI linear_combine - accumulation on a GPU") {
   REQUIRE_FALSE(b.backend.is_contiguous());
 
   // Every element (i, j) of the {2, 3} GPU tensor `t` equals expected(i, j).
-  const auto check_elems = [](const Ten& t, auto expected) {
+  // `expected` is a function pointer rather than `auto`: inside a generic lambda, GCC (seen with
+  // 13.3 and 16.2) rejects `cytnx::Device.cuda` as the right operand of the REQUIRE below, though
+  // the code is valid C++ and GCC accepts the same REQUIRE outside a template.
+  const auto check_elems = [](const Ten& t, double (*expected)(double, double)) {
     REQUIRE(t.backend.device() == cytnx::Device.cuda);
     REQUIRE(t.backend.shape() == std::vector<cytnx::cytnx_uint64>{2, 3});
     const cytnx::Tensor host = t.backend.to(cytnx::Device.cpu);
