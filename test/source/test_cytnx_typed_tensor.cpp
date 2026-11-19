@@ -245,9 +245,9 @@ TEST_CASE("CytnxTensor - context routines reject a second template argument othe
 }
 
 // A program with its own handle type can declare, in namespace tcapi, create_context and
-// destroy_context templates constrained to that type. Its calls, with the handle type deduced or
-// named, resolve to those templates only if the library's templates drop out of overload
-// resolution for the type; otherwise both are viable and the call is ambiguous.
+// destroy_context templates constrained to that type in their return types. Its calls, with the
+// handle type deduced or named, resolve to those templates only if the library's templates drop
+// out of overload resolution for the type; otherwise both are viable and the call is ambiguous.
 namespace {
   namespace own_handle_test {
     struct OwnHandle {};
