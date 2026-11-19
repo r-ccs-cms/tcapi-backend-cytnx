@@ -262,28 +262,32 @@ TEST_CASE("tcapi::save names a path it cannot open") {
   // The stream save writes through a temporary file; when that cannot be
   // opened, the save created nothing there, so it removes nothing.
   SUBCASE("the temporary file of a stream save") {
+    // A directory at the temporary file's path, removed on every exit so that
+    // later stream saves can use the path.
     const auto temporary = tcapi::detail::make_temp_cytn_file();
-    std::filesystem::remove(temporary);
-    std::filesystem::create_directory(temporary);
+    const ScratchDir blocker(temporary.filename().string());
+    REQUIRE(blocker.path() == temporary);
     std::ostringstream out;
     const std::string message
         = thrown_message<std::runtime_error>([&] { tcapi::save(ctx, sample, out); });
     check_contains(message, {"could not open file for writing"});
     CHECK(out.str().empty());
     CHECK(std::filesystem::is_directory(temporary));
-    std::filesystem::remove(temporary);
   }
 }
 
 // Cytnx throws while writing a default-constructed tensor; the stream is
-// closed all the same, so a caller can remove the partial file.
+// closed all the same, so a caller can remove the partial file, and the error
+// is a std::runtime_error naming the file.
 TEST_CASE("tcapi::save closes its file when writing the tensor throws") {
   const ScratchDir dir("tcapi_test_save_write_throws");
   const auto path = dir.path() / "x.ten";
   auto out = tcapi::detail::open_for_save(path);
   const cytnx::Tensor empty;
 
-  CHECK_THROWS(tcapi::detail::write_and_close(empty, out, path));
+  const std::string message = thrown_message<std::runtime_error>(
+      [&] { tcapi::detail::write_and_close(empty, out, path); });
+  check_contains(message, {"failed while writing", path.string()});
   CHECK_FALSE(out.is_open());
 }
 

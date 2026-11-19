@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cytnx.hpp>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <istream>
@@ -178,7 +179,8 @@ namespace tcapi::detail {
     }
 
     // Writes `a` to `out`, opened on `path`, and closes it, whether or not the write throws; once
-    // this returns, the file is complete. Tensor::Save, the call Cytnx documents for writing a
+    // this returns, the file is complete. A std::exception Cytnx throws while writing is rethrown
+    // as std::runtime_error naming the file. Tensor::Save, the call Cytnx documents for writing a
     // tensor in the format Tensor::Load reads, would write a path without an extension to
     // `<path>.cytn`. _Save, which Save calls once it has chosen the file, writes to the stream it
     // is given, so the file written is the path tcapi::load reads.
@@ -186,6 +188,10 @@ namespace tcapi::detail {
                                 const std::filesystem::path& path) {
       try {
         a._Save(out);
+      } catch (const std::exception& e) {
+        out.close();
+        throw std::runtime_error("tcapi::save failed while writing: " + path.string() + ": "
+                                 + e.what());
       } catch (...) {
         out.close();
         throw;
