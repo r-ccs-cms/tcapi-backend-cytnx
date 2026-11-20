@@ -146,15 +146,28 @@ namespace {
     out << bytes;
   }
 
+  struct WriteRefused {};
+
+  // A stream buffer that throws WriteRefused on every write. A stream catches
+  // it and reports the failure instead, unless its exception mask holds the
+  // state bit the failing operation sets.
+  struct RefusingBuffer : std::streambuf {
+    int_type overflow(int_type) override { throw WriteRefused{}; }
+    std::streamsize xsputn(const char*, std::streamsize) override { throw WriteRefused{}; }
+  };
+
+  // A context and make_sample's tensor, for the save tests below.
+  struct SaveFixture : tcapict::tcapi_test_fixture<SaveTensor> {
+    const SaveTensor sample = make_sample<SaveTensor>(ctx);
+  };
+
 }  // namespace
 
 // tcapi::load reads exactly the path it is given, so tcapi::save writes exactly
-// that path too, whatever its extension, and no other file.
-TEST_CASE("tcapi::save writes exactly the path it is given") {
-  tcapict::tcapi_test_fixture<SaveTensor> fix;
-  auto& ctx = fix.context();
-  const SaveTensor sample = make_sample<SaveTensor>(ctx);
-
+// that path too, whatever its extension, and no other file. The bytes written
+// are Cytnx's, which tcapi::save never inspects, so one sample tensor serves
+// every path.
+TEST_CASE_FIXTURE(SaveFixture, "tcapi::save writes exactly the path it is given") {
   for (const std::string name : {"noext", "x.cytn", "x.ten", "a.b.cytn"}) {
     CAPTURE(name);
     const ScratchDir dir("tcapi_test_save_exact_path");
@@ -167,10 +180,7 @@ TEST_CASE("tcapi::save writes exactly the path it is given") {
   }
 }
 
-TEST_CASE("tcapi::save creates missing parents and replaces a longer file") {
-  tcapict::tcapi_test_fixture<SaveTensor> fix;
-  auto& ctx = fix.context();
-  const SaveTensor sample = make_sample<SaveTensor>(ctx);
+TEST_CASE_FIXTURE(SaveFixture, "tcapi::save creates missing parents and replaces a longer file") {
   const ScratchDir dir("tcapi_test_save_parents_and_replace");
 
   SUBCASE("missing parent directories") {
@@ -190,22 +200,18 @@ TEST_CASE("tcapi::save creates missing parents and replaces a longer file") {
   }
 }
 
-TEST_CASE("tcapi::save to a path without an extension leaves <path>.cytn alone") {
-  tcapict::tcapi_test_fixture<SaveTensor> fix;
-  auto& ctx = fix.context();
+TEST_CASE_FIXTURE(SaveFixture,
+                  "tcapi::save to a path without an extension leaves <path>.cytn alone") {
   const ScratchDir dir("tcapi_test_save_leaves_cytn");
   const auto unrelated = dir.path() / "p.cytn";
   write_file(unrelated, "unrelated");
 
-  tcapi::save(ctx, make_sample<SaveTensor>(ctx), dir.path() / "p");
+  tcapi::save(ctx, sample, dir.path() / "p");
 
   CHECK(file_bytes(unrelated) == "unrelated");
 }
 
-TEST_CASE("tcapi::save prints nothing to std::cerr") {
-  tcapict::tcapi_test_fixture<SaveTensor> fix;
-  auto& ctx = fix.context();
-  const SaveTensor sample = make_sample<SaveTensor>(ctx);
+TEST_CASE_FIXTURE(SaveFixture, "tcapi::save prints nothing to std::cerr") {
   const ScratchDir dir("tcapi_test_save_no_warning");
 
   for (const std::string name : {"x.cytn", "noext"}) {
@@ -220,15 +226,12 @@ TEST_CASE("tcapi::save prints nothing to std::cerr") {
   }
 }
 
-TEST_CASE("tcapi::save and tcapi::load round-trip through streams") {
-  tcapict::tcapi_test_fixture<SaveTensor> fix;
-  auto& ctx = fix.context();
-
+TEST_CASE_FIXTURE(SaveFixture, "tcapi::save and tcapi::load round-trip through streams") {
   std::ostringstream out;
   std::string printed;
   {
     const CerrCapture capture;
-    tcapi::save(ctx, make_sample<SaveTensor>(ctx), out);
+    tcapi::save(ctx, sample, out);
     printed = capture.str();
   }
   CHECK(printed.empty());
@@ -237,10 +240,7 @@ TEST_CASE("tcapi::save and tcapi::load round-trip through streams") {
   check_real_sample(ctx, tcapi::load<SaveTensor>(ctx, in));
 }
 
-TEST_CASE("tcapi::save names a path it cannot open") {
-  tcapict::tcapi_test_fixture<SaveTensor> fix;
-  auto& ctx = fix.context();
-  const SaveTensor sample = make_sample<SaveTensor>(ctx);
+TEST_CASE_FIXTURE(SaveFixture, "tcapi::save names a path it cannot open") {
   const ScratchDir dir("tcapi_test_save_cannot_open");
 
   SUBCASE("a path naming a directory") {
@@ -276,10 +276,23 @@ TEST_CASE("tcapi::save names a path it cannot open") {
   }
 }
 
+// A stream that reports a failure as the tensor is copied to it makes the save
+// throw, and the temporary file is removed all the same.
+TEST_CASE_FIXTURE(SaveFixture, "tcapi::save reports a stream that fails") {
+  RefusingBuffer refusing;
+  std::ostream out(&refusing);
+  const auto temporary = tcapi::detail::make_temp_cytn_file();
+
+  const std::string message
+      = thrown_message<std::runtime_error>([&] { tcapi::save(ctx, sample, out); });
+  check_contains(message, {"failed while streaming tensor contents"});
+  CHECK_FALSE(std::filesystem::exists(temporary));
+}
+
 // Cytnx throws while writing a default-constructed tensor; the stream is
 // closed all the same, so a caller can remove the partial file, and the error
 // is a std::runtime_error naming the file.
-TEST_CASE("tcapi::save closes its file when writing the tensor throws") {
+TEST_CASE("write_and_close closes its file and names it when Cytnx throws") {
   const ScratchDir dir("tcapi_test_save_write_throws");
   const auto path = dir.path() / "x.ten";
   auto out = tcapi::detail::open_for_save(path);
@@ -332,10 +345,7 @@ namespace {
 
 // A save whose write fails partway reports it, naming the file, and a stream
 // save removes the partial temporary file and passes nothing on.
-TEST_CASE("tcapi::save names a path it could not fully write") {
-  tcapict::tcapi_test_fixture<SaveTensor> fix;
-  auto& ctx = fix.context();
-  const SaveTensor sample = make_sample<SaveTensor>(ctx);
+TEST_CASE_FIXTURE(SaveFixture, "tcapi::save names a path it could not fully write") {
   const ScratchDir dir("tcapi_test_save_write_failure");
   const auto target = dir.path() / "x.ten";
   const auto temporary = tcapi::detail::make_temp_cytn_file();
@@ -357,6 +367,40 @@ TEST_CASE("tcapi::save names a path it could not fully write") {
   check_contains(to_stream, {"failed while writing"});
   CHECK(out.str().empty());
   CHECK_FALSE(std::filesystem::exists(temporary));
+}
+
+// An exception other than cytnx::error passes through unchanged, and the file
+// is closed. Writes go to a RefusingBuffer, and badbit in the exception mask
+// makes std::ostream rethrow its WriteRefused rather than swallow it. The file
+// buffer still holds a byte that the zero size limit keeps from being flushed,
+// so the close fails, and with the mask still set would throw in place of
+// WriteRefused.
+TEST_CASE("write_and_close passes other exceptions through") {
+  const ScratchDir dir("tcapi_test_save_write_other_exception");
+  const auto path = dir.path() / "x.ten";
+  const cytnx::Tensor tensor = cytnx::zeros({2}, cytnx::Type.Double);
+  RefusingBuffer refusing;
+  auto out = tcapi::detail::open_for_save(path);
+  out << 'x';
+  static_cast<std::ios&>(out).rdbuf(&refusing);
+  out.exceptions(std::ios::badbit);
+
+  bool limited = false;
+  bool passed_through = false;
+  {
+    const FileSizeLimit limit(0);
+    limited = limit.active();
+    try {
+      tcapi::detail::write_and_close(tensor, out, path);
+    } catch (const WriteRefused&) {
+      passed_through = true;
+    } catch (...) {
+    }
+  }
+
+  REQUIRE(limited);
+  CHECK(passed_through);
+  CHECK_FALSE(out.is_open());
 }
 
 #endif
