@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "detected.h"
 #include "diagonal_check.h"
 
 TEST_CASE("TCAPI Eigenvalue - invalid num_of_bds_as_row") {
@@ -147,35 +148,27 @@ template <typename Ten> std::pair<cytnx::cytnx_uint64, tcapi::real_t<Ten>> trunc
   return {static_cast<cytnx::cytnx_uint64>(kept.size()), trunc_err};
 }
 
-// Whether trunc_svd(ctx, a, num_of_bds_as_row, u, s_diag, v_dag, trunc_err, tail...) is
-// well-formed, with every argument an lvalue of the stated type, as a caller's variables are.
-// ExplicitTenT spells the call trunc_svd<Ten>(...) instead of leaving TenT to deduction.
-template <typename Ten, bool ExplicitTenT, typename Void, typename... Tail> struct trunc_svd_accepts
-    : std::false_type {};
+// trunc_svd(ctx, a, num_of_bds_as_row, u, s_diag, v_dag, trunc_err, tail...) with every argument
+// an lvalue of the stated type, as a caller's variables are, and TenT left to deduction.
+template <typename Ten, typename... Tail> using trunc_svd_call = decltype(tcapi::trunc_svd(
+    std::declval<tcapi::context_handle_t<Ten>&>(), std::declval<const Ten&>(),
+    std::declval<tcapi::order_t<Ten>&>(), std::declval<Ten&>(),
+    std::declval<tcapi::real_ten_t<Ten>&>(), std::declval<Ten&>(),
+    std::declval<tcapi::real_t<Ten>&>(), std::declval<Tail&>()...));
 
-template <typename Ten, typename... Tail> struct trunc_svd_accepts<
-    Ten, false,
-    std::void_t<decltype(tcapi::trunc_svd(
+// The same call spelled trunc_svd<Ten>(...).
+template <typename Ten, typename... Tail> using explicit_trunc_svd_call
+    = decltype(tcapi::trunc_svd<Ten>(
         std::declval<tcapi::context_handle_t<Ten>&>(), std::declval<const Ten&>(),
         std::declval<tcapi::order_t<Ten>&>(), std::declval<Ten&>(),
         std::declval<tcapi::real_ten_t<Ten>&>(), std::declval<Ten&>(),
-        std::declval<tcapi::real_t<Ten>&>(), std::declval<Tail&>()...))>,
-    Tail...> : std::true_type {};
-
-template <typename Ten, typename... Tail> struct trunc_svd_accepts<
-    Ten, true,
-    std::void_t<decltype(tcapi::trunc_svd<Ten>(
-        std::declval<tcapi::context_handle_t<Ten>&>(), std::declval<const Ten&>(),
-        std::declval<tcapi::order_t<Ten>&>(), std::declval<Ten&>(),
-        std::declval<tcapi::real_ten_t<Ten>&>(), std::declval<Ten&>(),
-        std::declval<tcapi::real_t<Ten>&>(), std::declval<Tail&>()...))>,
-    Tail...> : std::true_type {};
+        std::declval<tcapi::real_t<Ten>&>(), std::declval<Tail&>()...));
 
 template <typename Ten, typename... Tail> inline constexpr bool trunc_svd_accepts_v
-    = trunc_svd_accepts<Ten, false, void, Tail...>::value;
+    = tcapi_test::detected<trunc_svd_call, Ten, Tail...>::value;
 
 template <typename Ten, typename... Tail> inline constexpr bool explicit_trunc_svd_accepts_v
-    = trunc_svd_accepts<Ten, true, void, Tail...>::value;
+    = tcapi_test::detected<explicit_trunc_svd_call, Ten, Tail...>::value;
 
 // The two trailing arguments of trunc_svd's 9-argument form are (chi_max, s_min), and nothing
 // else. A floating-point first one is rejected rather than converted to chi_max, so a call
