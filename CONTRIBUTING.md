@@ -34,11 +34,11 @@ scripts/tidy-count.sh --check    # compare them with .clang-tidy-baseline
 scripts/tidy-count.sh --update   # rewrite .clang-tidy-baseline
 ```
 
-`--check` fails on any difference and prints each changed entry with the change in its count. An entry names a warning by its file, check, message and the text of the line it is on, without the line number, so moving code does not change it. The baseline also records each NOLINT directive with the line it covers, or a checksum of a `NOLINTBEGIN` block's lines, and how many diagnostics each source's NOLINT directives suppress, so a warning hidden by an existing directive shows as well.
+`--check` fails on any difference and prints each changed entry with the change in its count. An entry names a warning by its file, check, message and the text of the line it is on, without the line number, so moving code does not change it. The baseline also records each NOLINT directive with the line it covers, or a checksum of a `NOLINTBEGIN` block's lines, and how many diagnostics NOLINT directives suppress in each source's translation unit, headers included, so a warning hidden by an existing directive shows as well.
 
 When your change fixes or adds warnings, run `--update` and commit `.clang-tidy-baseline` with the change. In the pull request description, explain every entry whose count rises.
 
-The pre-push hook checks the commit you are pushing only when it is `HEAD` and your working tree has no staged changes or untracked files, and it sees one branch per push. Push one branch at a time from a clean checkout. To push without the check, run `SKIP=clang-tidy-baseline git push`.
+The pre-push hook analyzes your working tree, so it fails unless the commit you push is `HEAD` and `git status` shows nothing pre-commit leaves in place: a staged change, an untracked file or a modified submodule fails it, while pre-commit sets unstaged changes to tracked files aside first. It sees one branch per push. Push one branch at a time from a clean checkout. To push without the check, run `SKIP=clang-tidy-baseline git push`.
 
 ### Warnings that are not fixed
 
@@ -65,7 +65,7 @@ code; // NOLINT(<checks>): <reason>
 
 ### The baseline's environment
 
-The baseline belongs to the clang-tidy version and the build configuration it records: its first lines hold the version and each source's `-D`, `-U`, `-std`, `-include` and `-imacros` options. `--check` compares nothing when either differs, because the warnings then differ for reasons other than the code. A pull request that upgrades clang-tidy or changes the configuration runs `--update` and explains the change by itself.
+The baseline belongs to the clang-tidy version and the build configuration it records: its first lines hold the version and each source's `-D`, `-U`, `-std`, `-include` and `-imacros` options. `--check` compares nothing when the version differs, or when a source present in both the baseline and your build has different options, because the warnings then differ for reasons other than the code. A source added or removed is a change in the code, and shows as changed entries. A pull request that upgrades clang-tidy or changes the configuration runs `--update` and explains the change by itself.
 
 Without the baseline's environment, compare your change with its base commit in your own environment instead. This needs a build configured with GCC or Clang; clang-tidy cannot read the compile options of the `intel-*` presets.
 

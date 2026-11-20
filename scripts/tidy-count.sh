@@ -131,6 +131,8 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 # Awk helpers shared by the programs below: path normalization and trimming.
+# norm_vars gives norm() the two prefixes it rewrites.
+norm_vars=(-v "build=$build/" -v "root=$root/")
 awk_lib='
 function norm(p) {
   if (index(p, build) == 1) return "<build>/" substr(p, length(build) + 1)
@@ -156,6 +158,11 @@ function replace_all(s, from, to,    out, i) {
 # Counts identical lines of standard input as `<count>\t<line>`.
 count_keys() {
   LC_ALL=C sort | uniq -c | awk '{ c = $1; sub(/^ *[0-9]+ /, ""); print c "\t" $0 }'
+}
+
+# Prints the number of lines in the file $1.
+count_lines() {
+  wc -l <"$1" | tr -d ' '
 }
 
 # Counts identical lines of standard input, most frequent first.
@@ -233,11 +240,11 @@ missing=$(LC_ALL=C comm -23 "$work/disk-sources" "$work/db-sources")
 [[ -z $missing ]] ||
   die "these sources are not in $build/compile_commands.json, so they would not be analyzed:" \
     "$missing" "a unity build or a source CMake does not compile leaves them out"
-nsources=$(wc -l <"$work/db-sources" | tr -d ' ')
+nsources=$(count_lines "$work/db-sources")
 ((nsources > 0)) || die "no source under $root/source is in $build/compile_commands.json"
 
 # One `config\t<source>\t<options>` line per source.
-awk -F'\t' -v build="$build/" -v root="$root/" -v p="$root/source/" "$awk_lib"'
+awk -F'\t' "${norm_vars[@]}" -v p="$root/source/" "$awk_lib"'
 index($1, p) == 1 {
   n = split($2, t, " ")
   opts = ""
@@ -267,7 +274,7 @@ fi
 # Writes `nolint\t...` keys to nolint.keys, `<check>` lines to nolint.checks and
 # violations to nolint.errors.
 find "$root/source" "$root/include" -type f -exec env LC_ALL=C awk \
-  -v build="$build/" -v root="$root/" \
+  "${norm_vars[@]}" \
   -v keys="$work/nolint.keys" -v checks_out="$work/nolint.checks" -v errors="$work/nolint.errors" \
   "$awk_lib"'
 BEGIN {
@@ -342,9 +349,10 @@ fi
 
 pattern=$(printf '%s' "$root" | awk '{ gsub(/[][\\.^$*+?(){}|]/, "\\\\&"); print }')
 # run-clang-tidy exits nonzero when a source fails to compile; a count from a
-# partial run is not a baseline, so stop.
-if ! "$runner" -clang-tidy-binary "$tidy_path" -p "$build" -use-color=false \
-  "^$pattern/source/" >"$work/raw" 2>&1; then
+# partial run is not a baseline, so stop. It runs from DIR because it reads
+# the .clang-tidy of its working directory before analyzing.
+if ! (cd "$root" && "$runner" -clang-tidy-binary "$tidy_path" -p "$build" -use-color=false \
+  "^$pattern/source/") >"$work/raw" 2>&1; then
   grep -E ': (error|fatal error):' "$work/raw" >&2 || tail -20 "$work/raw" >&2
   die "clang-tidy failed; the count is not valid"
 fi
@@ -368,11 +376,11 @@ match($0, /:[0-9]+:[0-9]+: warning: /) {
 }' "$work/raw" | LC_ALL=C sort -u >"$work/warnings.tsv"
 
 out="$build/clang-tidy-warnings.txt"
-awk -F'\t' -v build="$build/" -v root="$root/" "$awk_lib"'
+awk -F'\t' "${norm_vars[@]}" "$awk_lib"'
 { print norm($1) ":" $2 ":" $3 ": warning: " $5 " [" $4 "]" }
 ' "$work/warnings.tsv" | LC_ALL=C sort >"$out"
 
-awk -F'\t' -v build="$build/" -v root="$root/" "$awk_lib"'
+awk -F'\t' "${norm_vars[@]}" "$awk_lib"'
 $1 != current {
   current = $1
   n = 0
@@ -384,7 +392,7 @@ $1 != current {
 ' "$work/warnings.tsv" >"$work/warning.keys"
 
 # One `suppressed\t<source>\t<count>` line per source.
-awk -v build="$build/" -v root="$root/" -v sources="$work/db-sources" "$awk_lib"'
+awk "${norm_vars[@]}" -v sources="$work/db-sources" "$awk_lib"'
 BEGIN { while ((getline s < sources) > 0) { list[++n] = s; count[s] = 0 } }
 /^\[ *[0-9]+\/[0-9]+\]/ {
   # The header ends with the source, quoted when its path has a space.
@@ -416,8 +424,8 @@ cat "$work/warning.keys" "$work/nolint.keys" "$work/suppressed.keys" | count_key
 
 # --- Report --------------------------------------------------------------------
 
-nwarnings=$(wc -l <"$out" | tr -d ' ')
-ndirectives=$(wc -l <"$work/nolint.keys" | tr -d ' ')
+nwarnings=$(count_lines "$out")
+ndirectives=$(count_lines "$work/nolint.keys")
 
 case $mode in
   count)
