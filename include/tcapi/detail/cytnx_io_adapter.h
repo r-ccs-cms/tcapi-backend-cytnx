@@ -127,15 +127,22 @@ namespace tcapi::detail {
       // Inserting in.rdbuf() would report nothing when `out` stops accepting bytes partway, since
       // it fails only when it inserts none; write sets badbit on any short write.
       std::vector<char> buffer(std::size_t{1} << 16);
+      std::streamsize copied = 0;
       while (in.read(buffer.data(), static_cast<std::streamsize>(buffer.size()))
              || in.gcount() > 0) {
         out.write(buffer.data(), in.gcount());
         if (!out) {
           throw std::runtime_error("tcapi::save failed while streaming tensor contents");
         }
+        copied += in.gcount();
       }
       if (in.bad()) {
         throw std::runtime_error("tcapi::save failed while reading the temporary file");
+      }
+      // A saved tensor is never empty, so an empty temporary file means something else truncated
+      // it after it was written.
+      if (copied == 0) {
+        throw std::runtime_error("tcapi::save read nothing from the temporary file");
       }
     }
 

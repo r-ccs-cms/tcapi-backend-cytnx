@@ -307,6 +307,25 @@ TEST_CASE_FIXTURE(SaveFixture, "tcapi::save and tcapi::load round-trip through s
   check_real_sample(ctx, tcapi::load<SaveTensor>(ctx, in));
 }
 
+// A tensor larger than the block the stream save copies in reaches the stream
+// whole.
+TEST_CASE_FIXTURE(SaveFixture, "tcapi::save streams a tensor larger than one copy block") {
+  // 20000 doubles, about 160 KB, spanning three 64 KiB blocks.
+  const tcapi::elem_coors_t<SaveTensor> last = {19999};
+  SaveTensor large = tcapi::zeros<SaveTensor>(ctx, {20000});
+  tcapi::set_elem(ctx, large, {0}, 1.5);
+  tcapi::set_elem(ctx, large, last, -2.5);
+
+  std::ostringstream out;
+  tcapi::save(ctx, large, out);
+  std::istringstream in(out.str());
+  const SaveTensor loaded = tcapi::load<SaveTensor>(ctx, in);
+
+  CHECK(tcapi::shape(ctx, loaded) == tcapi::shape(ctx, large));
+  CHECK(tcapi::get_elem(ctx, loaded, {0}) == 1.5);
+  CHECK(tcapi::get_elem(ctx, loaded, last) == -2.5);
+}
+
 TEST_CASE_FIXTURE(SaveFixture, "tcapi::save names a path it cannot open") {
   const ScratchDir dir("tcapi_test_save_cannot_open");
 
@@ -369,6 +388,20 @@ TEST_CASE_FIXTURE(SaveFixture, "tcapi::save reports a stream that fails") {
   }
 
   CHECK_FALSE(std::filesystem::exists(temporary));
+}
+
+// A saved tensor is never empty, so finding the temporary file empty when it
+// is copied to the stream is reported rather than passed on as nothing.
+TEST_CASE("copy_file_to_stream rejects an empty temporary file") {
+  const ScratchDir dir("tcapi_test_save_empty_temporary");
+  const auto path = dir.path() / "empty.cytn";
+  write_file(path, "");
+  std::ostringstream out;
+
+  const std::string message
+      = thrown_message<std::runtime_error>([&] { tcapi::detail::copy_file_to_stream(path, out); });
+  check_contains(message, {"read nothing from the temporary file"});
+  CHECK(out.str().empty());
 }
 
 // Cytnx throws while writing a default-constructed tensor; the stream is
