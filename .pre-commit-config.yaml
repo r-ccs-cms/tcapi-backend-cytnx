@@ -1,7 +1,34 @@
+# `pre-commit install` installs both hook types. A hook that declares no stage
+# runs at every stage in default_stages, which lists all of pre-commit's
+# stages except pre-push, so that only the clang-tidy check runs at push.
+default_install_hook_types: [pre-commit, pre-push]
+default_stages:
+  - commit-msg
+  - post-checkout
+  - post-commit
+  - post-merge
+  - post-rewrite
+  - pre-commit
+  - pre-merge-commit
+  - pre-rebase
+  - prepare-commit-msg
+  - manual
+
 repos:
   - repo: https://github.com/pre-commit/mirrors-clang-format
     rev: v21.1.1
     hooks:
       - id: clang-format
         types_or: [c++, c, cuda]
-
+  - repo: local
+    hooks:
+      # Compares clang-tidy's results with .clang-tidy-baseline. It runs on
+      # every push, since changes outside the sources, such as to
+      # CMakeLists.txt or the script, can change them too.
+      - id: clang-tidy-baseline
+        name: clang-tidy baseline
+        entry: scripts/tidy-count.sh --check
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
