@@ -64,6 +64,9 @@ namespace tcapi {
    * @param strg Storage object to save to; a temporary binds too, as the
    * forwarding reference TCAPI V1 declares
    * @throws std::runtime_error when `a` is default-constructed, before anything is written
+   * @throws std::runtime_error when the save cannot otherwise be completed; for a path, the message
+   * names the file. An exception the destination stream itself throws, or a std::bad_alloc, passes
+   * through unchanged.
    */
   template <typename TenT, typename Storage>
   inline void save(context_handle_t<TenT>& ctx, const TenT& a, Storage&& strg) {

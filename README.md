@@ -179,6 +179,8 @@ A plain `std::move` also compiles, but the moved-from tensor keeps sharing stora
 
 `tcapi::load` reads a file as the element type it was saved with, and throws `std::runtime_error` for any other element type. To get another element type, load the saved one and change it: `tcapi::convert` casts real to complex and between precisions, and `tcapi::real` or `tcapi::imag` take a complex tensor to a real one.
 
+`tcapi::save` writes exactly the file its path names, with or without an extension; unlike `cytnx::Tensor::Save`, it appends no `.cytn` to a path without one. `tcapi::load` therefore reads a tensor back from the same path it was saved to.
+
 `tcapi::save` of a default-constructed tensor throws `std::runtime_error` before anything is written, so an existing file at the path is left as it was.
 
 ## Documentation

@@ -14,6 +14,7 @@
 #include <utility>
 
 #include "diagonal_check.h"
+#include "message_check.h"
 #include "sample_tensor.h"
 #include "tcapi/miscellaneous.h"
 #include "tcapi/tcapi.h"
@@ -396,30 +397,6 @@ TEST_CASE("CytnxTensor - Construction") {
     CHECK(std::abs(elem_11 - 4.0) < 1e-10);
   }
 }
-
-namespace {
-
-  // Runs `f` and returns the message of the E it throws, or an empty string
-  // when it throws none.
-  template <typename E, typename F> std::string thrown_message(F&& f) {
-    try {
-      f();
-    } catch (const E& e) {
-      return e.what();
-    }
-    return {};
-  }
-
-  // Checks that `message` contains each of `parts`.
-  void check_contains(const std::string& message, std::initializer_list<std::string> parts) {
-    CAPTURE(message);
-    for (const auto& part : parts) {
-      CAPTURE(part);
-      CHECK(message.find(part) != std::string::npos);
-    }
-  }
-
-}  // namespace
 
 // A CytnxTensor<T> holds the dtype T maps to, or is default-constructed; the
 // constructor rejects every other dtype and names both in its message.
@@ -1135,9 +1112,7 @@ namespace {
     return (std::filesystem::temp_directory_path() / name).string();
   }
 
-  // Saves make_sample's tensor of type From to `path`. The path needs an
-  // extension: Cytnx's Save appends .cytn to a path without one, so load would
-  // not find the file.
+  // Saves make_sample's tensor of type From to `path`.
   template <typename From> void save_sample(Ctx& ctx, const std::string& path) {
     tcapi::save(ctx, make_sample<From>(ctx), path);
   }
