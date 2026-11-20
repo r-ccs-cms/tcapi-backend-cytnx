@@ -1293,8 +1293,8 @@ TEST_CASE_TEMPLATE("CytnxTensor - close compares the largest difference", Tensor
   tcapi::destroy_context(ctx);
 }
 
-// TCAPI V1 declares get_elem only in the form that returns the element, so a call that passes an
-// output argument for the element is ill-formed.
+// TCAPI V1 declares get_elem only in the form that returns the element, so a tcapi::get_elem call
+// that passes an output argument for the element is ill-formed.
 TEST_CASE_TEMPLATE_DEFINE("CytnxTensor - get_elem returns the element and takes no output argument",
                           Tensor, get_elem_return_form_only) {
   static_assert(std::is_same_v<get_elem_call<Tensor>, tcapi::elem_t<Tensor>>);
