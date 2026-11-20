@@ -13,6 +13,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "detected.h"
 #include "diagonal_check.h"
 #include "message_check.h"
 #include "sample_tensor.h"
@@ -148,15 +149,7 @@ TEST_CASE_TEMPLATE_APPLY(cytnx_tensor_move_only, tcapi::supported_ten_types_t);
 
 namespace {
 
-  template <typename Void, template <typename...> class Op, typename... Args> struct detector
-      : std::false_type {};
-
-  template <template <typename...> class Op, typename... Args>
-  struct detector<std::void_t<Op<Args...>>, Op, Args...> : std::true_type {};
-
-  // detected<Op, Args...> holds when Op<Args...> is well-formed.
-  template <template <typename...> class Op, typename... Args> using detected
-      = detector<void, Op, Args...>;
+  using tcapi_test::detected;
 
   // create_context<Arg>(a) and destroy_context<Arg>(a) for an lvalue a of type Obj.
   template <typename Arg, typename Obj> using create_context_named_call
