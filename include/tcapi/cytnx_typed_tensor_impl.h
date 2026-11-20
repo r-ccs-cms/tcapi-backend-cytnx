@@ -424,7 +424,7 @@ namespace tcapi {
     if (r == 1) {
       // Create diagonal matrix from vector
       auto dim = static_cast<cytnx::cytnx_uint64>(inout.backend.shape()[0]);
-      auto result = cytnx::zeros({dim, dim}, detail::elem_to_cytnx_type<elem_t<TenT>>(), ctx);
+      auto result = cytnx::zeros({dim, dim}, detail::elem_to_cytnx_type<elem_t<TenT>>(), ctx.get());
 
       auto* data = inout.backend.storage().template data<elem_t<TenT>>();
       auto* result_data = result.storage().template data<elem_t<TenT>>();
@@ -438,7 +438,7 @@ namespace tcapi {
       // Extract diagonal from matrix
       auto dim = static_cast<cytnx::cytnx_uint64>(
           std::min(inout.backend.shape()[0], inout.backend.shape()[1]));
-      auto result = cytnx::zeros({dim}, detail::elem_to_cytnx_type<elem_t<TenT>>(), ctx);
+      auto result = cytnx::zeros({dim}, detail::elem_to_cytnx_type<elem_t<TenT>>(), ctx.get());
 
       auto rows = inout.backend.shape()[0];
       auto* in_data = inout.backend.storage().template data<elem_t<TenT>>();
@@ -1513,7 +1513,7 @@ namespace tcapi {
     }
 
     // Create new tensor with expanded shape, initialized to zero
-    cytnx::Tensor expanded = cytnx::zeros(new_shape, inout.backend.dtype(), ctx);
+    cytnx::Tensor expanded = cytnx::zeros(new_shape, inout.backend.dtype(), ctx.get());
 
     // Copy original data to the beginning of each expanded dimension
     auto original_coords = original_shape;
@@ -2005,7 +2005,7 @@ namespace tcapi {
       cytnx_shape.push_back(static_cast<cytnx::cytnx_uint64>(dim));
     }
     result.backend
-        = cytnx::Tensor(cytnx_shape, detail::elem_to_cytnx_type<cytnx::cytnx_double>(), ctx);
+        = cytnx::Tensor(cytnx_shape, detail::elem_to_cytnx_type<cytnx::cytnx_double>(), ctx.get());
     return result;
   }
 
@@ -2019,7 +2019,7 @@ namespace tcapi {
       cytnx_shape.push_back(static_cast<cytnx::cytnx_uint64>(dim));
     }
     result.backend
-        = cytnx::Tensor(cytnx_shape, detail::elem_to_cytnx_type<cytnx::cytnx_float>(), ctx);
+        = cytnx::Tensor(cytnx_shape, detail::elem_to_cytnx_type<cytnx::cytnx_float>(), ctx.get());
     return result;
   }
 
@@ -2033,8 +2033,8 @@ namespace tcapi {
     for (const auto& dim : shape) {
       cytnx_shape.push_back(static_cast<cytnx::cytnx_uint64>(dim));
     }
-    result.backend
-        = cytnx::Tensor(cytnx_shape, detail::elem_to_cytnx_type<cytnx::cytnx_complex128>(), ctx);
+    result.backend = cytnx::Tensor(
+        cytnx_shape, detail::elem_to_cytnx_type<cytnx::cytnx_complex128>(), ctx.get());
     return result;
   }
 
@@ -2048,8 +2048,8 @@ namespace tcapi {
     for (const auto& dim : shape) {
       cytnx_shape.push_back(static_cast<cytnx::cytnx_uint64>(dim));
     }
-    result.backend
-        = cytnx::Tensor(cytnx_shape, detail::elem_to_cytnx_type<cytnx::cytnx_complex64>(), ctx);
+    result.backend = cytnx::Tensor(cytnx_shape,
+                                   detail::elem_to_cytnx_type<cytnx::cytnx_complex64>(), ctx.get());
     return result;
   }
 
@@ -2058,7 +2058,7 @@ namespace tcapi {
       context_handle_t<CytnxTensor<cytnx::cytnx_double>>& ctx,
       const bond_dim_t<CytnxTensor<cytnx::cytnx_double>> N) {
     CytnxTensor<cytnx::cytnx_double> result;
-    result.backend = cytnx::eye(N, detail::elem_to_cytnx_type<cytnx::cytnx_double>(), ctx);
+    result.backend = cytnx::eye(N, detail::elem_to_cytnx_type<cytnx::cytnx_double>(), ctx.get());
     return result;
   }
 
@@ -2066,7 +2066,7 @@ namespace tcapi {
       context_handle_t<CytnxTensor<cytnx::cytnx_float>>& ctx,
       const bond_dim_t<CytnxTensor<cytnx::cytnx_float>> N) {
     CytnxTensor<cytnx::cytnx_float> result;
-    result.backend = cytnx::eye(N, detail::elem_to_cytnx_type<cytnx::cytnx_float>(), ctx);
+    result.backend = cytnx::eye(N, detail::elem_to_cytnx_type<cytnx::cytnx_float>(), ctx.get());
     return result;
   }
 
@@ -2074,7 +2074,8 @@ namespace tcapi {
       context_handle_t<CytnxTensor<cytnx::cytnx_complex128>>& ctx,
       const bond_dim_t<CytnxTensor<cytnx::cytnx_complex128>> N) {
     CytnxTensor<cytnx::cytnx_complex128> result;
-    result.backend = cytnx::eye(N, detail::elem_to_cytnx_type<cytnx::cytnx_complex128>(), ctx);
+    result.backend
+        = cytnx::eye(N, detail::elem_to_cytnx_type<cytnx::cytnx_complex128>(), ctx.get());
     return result;
   }
 
@@ -2082,7 +2083,7 @@ namespace tcapi {
       context_handle_t<CytnxTensor<cytnx::cytnx_complex64>>& ctx,
       const bond_dim_t<CytnxTensor<cytnx::cytnx_complex64>> N) {
     CytnxTensor<cytnx::cytnx_complex64> result;
-    result.backend = cytnx::eye(N, detail::elem_to_cytnx_type<cytnx::cytnx_complex64>(), ctx);
+    result.backend = cytnx::eye(N, detail::elem_to_cytnx_type<cytnx::cytnx_complex64>(), ctx.get());
     return result;
   }
 

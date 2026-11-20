@@ -56,6 +56,7 @@ namespace tcapi {
    * This class wraps an integer device ID and restricts direct assignment.
    * Only create_context() is allowed to change the value after construction,
    * preventing accidental misuse like `ctx = 0;`.
+   * The handle does not convert to int either; get() reads the device ID.
    * Default-constructed handles target CPU (cytnx::Device.cpu == -1).
    */
   class CytnxContextHandle {
@@ -83,8 +84,10 @@ namespace tcapi {
     CytnxContextHandle(CytnxContextHandle&&) = default;
     CytnxContextHandle& operator=(CytnxContextHandle&&) = default;
 
-    // Implicit conversion to int (for Cytnx API compatibility)
-    operator int() const { return value_; }
+    // A call that passes the handle to an int through this conversion fails to compile. Being
+    // deleted, the conversion still takes part in overload resolution, so such a call cannot
+    // silently select another overload instead.
+    operator int() const = delete;
 
     // Explicit getter
     int get() const { return value_; }
