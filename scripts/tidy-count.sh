@@ -50,7 +50,8 @@
 #   // NOLINTNEXTLINE(<checks>): <reason>
 #   // NOLINTBEGIN(<checks>): <reason>
 #   // NOLINTEND(<checks>)
-# <checks> is a comma-separated list of check names (letters, digits, `.`, `_`
+# NOLINT follows the code it applies to; the other three stand alone on their
+# line. <checks> is a comma-separated list of check names (letters, digits, `.`, `_`
 # and `-`) without spaces or `*`, <reason> starts with a letter, and each
 # NOLINTEND closes the innermost open NOLINTBEGIN, which must name the same
 # checks.
@@ -250,7 +251,7 @@ index($1, p) == 1 {
   opts = ""
   for (i = 1; i <= n; i++) {
     if (t[i] ~ /^-[DU]./ || t[i] ~ /^-std=/) opts = opts " " t[i]
-    else if ((t[i] == "-include" || t[i] == "-imacros") && i < n) { opts = opts " " t[i] " " t[i + 1]; i++ }
+    else if ((t[i] == "-D" || t[i] == "-U" || t[i] == "-include" || t[i] == "-imacros") && i < n) { opts = opts " " t[i] " " t[i + 1]; i++ }
   }
   sub(/^ /, "", opts)
   print "config\t" norm($1) "\t" replace_all(opts, root, "<root>/")
@@ -305,7 +306,13 @@ FNR == 1 { end_file(); file = norm(FILENAME); depth = 0 }
     next
   }
   text = substr(line, RSTART, RLENGTH)
+  before = substr(line, 1, RSTART - 1)
   rest = substr(line, RSTART + RLENGTH)
+  if (before ~ /\/$/) { bad("the directive must follow // exactly, not ///"); next }
+  if (text !~ /^\/\/ NOLINT\(/ && before !~ /^[ \t]*$/) {
+    bad("NOLINTNEXTLINE, NOLINTBEGIN and NOLINTEND must stand alone on their line")
+    next
+  }
   sub(/[ \t]+$/, "", rest)
   kind = text
   sub(/^\/\/ NOLINT/, "", kind)

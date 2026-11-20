@@ -25,7 +25,8 @@ repos:
       # Compares clang-tidy's results with .clang-tidy-baseline. It runs
       # whatever files the pushed commits change, since changes outside the sources,
       # such as to CMakeLists.txt or the script, can change the results too.
-      # pre-commit runs no pre-push hook for a push that adds no commit.
+      # pre-commit runs no pre-push hook for a branch deletion, or for a new
+      # branch whose commits are all on the remote already.
       - id: clang-tidy-baseline
         name: clang-tidy baseline
         entry: scripts/tidy-count.sh --check

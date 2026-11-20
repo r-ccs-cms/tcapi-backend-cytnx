@@ -53,7 +53,7 @@ code; // NOLINT(<checks>): <reason>
 // NOLINTEND(<checks>)
 ```
 
-`<checks>` is one or more check names, made of letters, digits, `.`, `_` and `-`, separated by commas without spaces or `*`. `<reason>` starts with a letter. Each `NOLINTEND` closes the innermost open `NOLINTBEGIN`, which must name the same checks.
+`NOLINTNEXTLINE`, `NOLINTBEGIN` and `NOLINTEND` stand alone on their line. `<checks>` is one or more check names, made of letters, digits, `.`, `_` and `-`, separated by commas without spaces or `*`. `<reason>` starts with a letter. Each `NOLINTEND` closes the innermost open `NOLINTBEGIN`, which must name the same checks.
 
 **A warning a dependency brings in** is handled where the dependency enters, not at each site. Change `.clang-tidy` with a comment naming the dependency and why, as `.clang-tidy` disables `readability-static-accessed-through-instance` for Cytnx's `cytnx::Type.Double` style, or set `misc-include-cleaner.IgnoreHeaders` for headers internal to the dependency; or add the dependency's include directories as `SYSTEM` in CMake. A pull request that adds or updates a dependency updates the baseline like any other.
 
