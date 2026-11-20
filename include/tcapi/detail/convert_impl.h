@@ -76,7 +76,7 @@ namespace tcapi {
     }
     info << "], ElemT1=" << cytnx::Type_class::getname(detail::get_cytnx_type_id<ElemT1>())
          << " -> ElemT2=" << cytnx::Type_class::getname(detail::get_cytnx_type_id<ElemT2>())
-         << ", ctx1=" << ctx1 << " -> ctx2=" << ctx2;
+         << ", ctx1=" << ctx1.get() << " -> ctx2=" << ctx2.get();
 
     TCAPI_TIME_FUNCTION_WITH_INFO("tcapi::convert", info.str());
 
@@ -91,10 +91,10 @@ namespace tcapi {
     }
 
     // Handle device transfer if contexts differ
-    if (ctx1 != ctx2) {
-      if (ctx2 >= 0) {  // GPU device
-        converted = converted.to(ctx2);
-      } else if (ctx2 == cytnx::Device.cpu) {  // CPU device
+    if (ctx1.get() != ctx2.get()) {
+      if (ctx2.get() >= 0) {  // GPU device
+        converted = converted.to(ctx2.get());
+      } else if (ctx2.get() == cytnx::Device.cpu) {  // CPU device
         converted = converted.to(cytnx::Device.cpu);
       }
     }

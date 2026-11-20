@@ -182,6 +182,16 @@ namespace {
 
   struct DerivedContextHandle : tcapi::CytnxContextHandle {};
 
+  // pick(t) for a const lvalue t of type T. An argument that converts to int selects pick(int), and
+  // one that converts to nothing selects pick(...). The overloads are static members, never
+  // defined, since the call is only ever unevaluated.
+  struct int_or_anything {
+    static int pick(int);
+    static char pick(...);
+  };
+
+  template <typename T> using pick_call = decltype(int_or_anything::pick(std::declval<const T&>()));
+
 }  // namespace
 
 // TCAPI V1 declares create_context and destroy_context over the handle type, ContextHandleT, so
@@ -242,6 +252,16 @@ TEST_CASE("CytnxTensor - context routines reject a second template argument othe
   static_assert(!detected<create_context_second_named_call, tcapi::CytnxContextHandle, int>::value);
   static_assert(
       !detected<destroy_context_second_named_call, tcapi::CytnxContextHandle, int>::value);
+}
+
+// A handle passed where an int is expected would hand over its device ID, so no conversion to int
+// is usable, implicit or explicit. The conversion is declared deleted, so pick(handle) still
+// selects it into pick(int) and is ill-formed; with no conversion declared at all, the call would
+// compile and select pick(...).
+TEST_CASE("CytnxTensor - context handle does not convert to int") {
+  static_assert(!std::is_convertible_v<tcapi::CytnxContextHandle, int>);
+  static_assert(!std::is_constructible_v<int, tcapi::CytnxContextHandle>);
+  static_assert(!detected<pick_call, tcapi::CytnxContextHandle>::value);
 }
 
 // The templates below take the same T& parameter as the library's, so the calls in the test case
@@ -776,9 +796,9 @@ TEST_CASE("CytnxTensor - Miscellaneous functions") {
 
     // Context should be initialized to GPU if available, otherwise CPU
     if (cytnx::Device.Ngpus > 0) {
-      CHECK(ctx >= cytnx::Device.cuda);  // GPU context
+      CHECK(ctx.get() >= cytnx::Device.cuda);  // GPU context
     } else {
-      CHECK(ctx == cytnx::Device.cpu);  // CPU context
+      CHECK(ctx.get() == cytnx::Device.cpu);  // CPU context
     }
 
     // Destroy context (should not throw)
@@ -934,7 +954,7 @@ TEST_CASE("CytnxTensor - Eigenvalue decomposition") {
 
     // GPU version of Cytnx does not support Eig for non-symmetric matrices
     // CPU version supports it
-    if (ctx >= cytnx::Device.cuda) {
+    if (ctx.get() >= cytnx::Device.cuda) {
       // On GPU: expect error for non-symmetric matrix
       CHECK_THROWS(tcapi::eigvals(ctx, matrix, 1, eigenvalues));
     } else {
