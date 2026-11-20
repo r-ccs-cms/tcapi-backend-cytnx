@@ -181,6 +181,12 @@ namespace {
   template <typename Handle, typename Second> using destroy_context_second_named_call
       = decltype(tcapi::destroy_context<Handle, Second>(std::declval<Handle&>()));
 
+  // tcapi::get_elem(ctx, a, coors, extra...) for an lvalue context ctx and a const tensor a of
+  // type Tensor, with the further arguments extra... of types Extra....
+  template <typename Tensor, typename... Extra> using get_elem_call = decltype(tcapi::get_elem(
+      std::declval<tcapi::context_handle_t<Tensor>&>(), std::declval<const Tensor&>(),
+      std::declval<const tcapi::elem_coors_t<Tensor>&>(), std::declval<Extra>()...));
+
   struct DerivedContextHandle : tcapi::CytnxContextHandle {};
 
   // pick(t) for a const lvalue t of type T. An argument that converts to int selects pick(int), and
@@ -1282,20 +1288,12 @@ TEST_CASE_TEMPLATE("CytnxTensor - close compares the largest difference", Tensor
   tcapi::destroy_context(ctx);
 }
 
-TEST_CASE("get_elem void overload writes the element to its output argument") {
-  using Tensor = tcapi::CytnxTensor<cytnx::cytnx_double>;
-  using Real = tcapi::real_t<Tensor>;
-
-  tcapi::CytnxContextHandle ctx;
-  tcapi::create_context(ctx);
-
-  auto tensor = tcapi::zeros<Tensor>(ctx, {2, 2});
-  tcapi::set_elem(ctx, tensor, {1, 0}, 1.5);
-  Real elem = 0.0;
-
-  // This overload also prints a warning at run time, once per element type.
-  // Warning can be suppressed with: export TCAPI_SUPPRESS_FUTURE_API_WARNING=1
-  tcapi::get_elem(ctx, tensor, {1, 0}, elem);
-
-  CHECK(elem == 1.5);
+// TCAPI V1 declares get_elem only in the form that returns the element, so a tcapi::get_elem call
+// that passes an output argument for the element is ill-formed.
+TEST_CASE_TEMPLATE_DEFINE("CytnxTensor - get_elem returns the element and takes no output argument",
+                          Tensor, get_elem_return_form_only) {
+  static_assert(std::is_same_v<get_elem_call<Tensor>, tcapi::elem_t<Tensor>>);
+  static_assert(!detected<get_elem_call, Tensor, tcapi::elem_t<Tensor>&>::value);
 }
+
+TEST_CASE_TEMPLATE_APPLY(get_elem_return_form_only, tcapi::supported_ten_types_t);
