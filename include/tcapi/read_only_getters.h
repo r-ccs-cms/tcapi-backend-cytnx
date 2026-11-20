@@ -48,19 +48,7 @@ namespace tcapi {
   template <typename TenT> std::size_t size_bytes(context_handle_t<TenT>& ctx, const TenT& a);
 
   /**
-   * @brief Get the value of a specific element (in-place version)
-   *
-   * @tparam TenT Tensor type
-   * @param ctx Context handle for the tensor library
-   * @param a Input tensor
-   * @param coors Coordinates of the element
-   * @param elem Output element value
-   */
-  template <typename TenT> void get_elem(context_handle_t<TenT>& ctx, const TenT& a,
-                                         const elem_coors_t<TenT>& coors, elem_t<TenT>& elem);
-
-  /**
-   * @brief Get the value of a specific element (out-of-place version)
+   * @brief Get the value of a specific element
    *
    * @tparam TenT Tensor type
    * @param ctx Context handle for the tensor library

@@ -123,9 +123,6 @@ namespace tcapi {
   // These are separate from the main TCAPI header declarations to avoid conflicts
 
   // Read-only getter functions for TenT
-  template <typename TenT> void get_elem(context_handle_t<TenT>& ctx, const TenT& a,
-                                         const elem_coors_t<TenT>& coors, elem_t<TenT>& elem);
-
   template <typename TenT> elem_t<TenT> get_elem(context_handle_t<TenT>& ctx, const TenT& a,
                                                  const elem_coors_t<TenT>& coors);
 
@@ -146,30 +143,6 @@ namespace tcapi {
       cytnx_coors.push_back(static_cast<cytnx::cytnx_uint64>(coord));
     }
     return a.backend.template at<elem_t<TenT>>(cytnx_coors);
-  }
-
-  // Void overload (reserved for future GPU support)
-  template <typename TenT> void get_elem(context_handle_t<TenT>& ctx, const TenT& a,
-                                         const elem_coors_t<TenT>& coors, elem_t<TenT>& elem) {
-    // Runtime warning (emitted once per element type)
-    static bool warned = false;
-    if (!warned) {
-      // Check suppression flag
-      const char* suppress = std::getenv("TCAPI_SUPPRESS_FUTURE_API_WARNING");
-
-      // Show warning by default, unless explicitly suppressed
-      if (!suppress || std::atoi(suppress) == 0) {
-        std::cerr
-            << "[TCAPI Warning] tcapi::get_elem void overload is reserved for future GPU support.\n"
-            << "  This call is currently forwarded to the return-value version.\n"
-            << "  Recommended migration: auto elem = tcapi::get_elem(ctx, a, coors);\n"
-            << "  To suppress this warning: export TCAPI_SUPPRESS_FUTURE_API_WARNING=1\n";
-      }
-      warned = true;
-    }
-
-    // Forward to current API
-    elem = get_elem(ctx, a, coors);
   }
 
   // for_each implementation for TenT (mutable version)
