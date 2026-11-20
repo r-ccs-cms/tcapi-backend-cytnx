@@ -69,6 +69,11 @@ die() {
   exit 1
 }
 
+# Prints the absolute path of the directory $1.
+abspath() {
+  (cd "$1" && pwd)
+}
+
 usage() {
   awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
 }
@@ -101,10 +106,10 @@ while (($#)); do
   shift
 done
 
-script_repo=$(cd "$(dirname "$0")/.." && pwd)
+script_repo=$(abspath "$(dirname "$0")/..")
 if [[ -n $root ]]; then
   [[ -d $root ]] || die "source tree $root not found"
-  root=$(cd "$root" && pwd)
+  root=$(abspath "$root")
 else
   root=$script_repo
 fi
@@ -112,7 +117,7 @@ baseline=${baseline:-$script_repo/.clang-tidy-baseline}
 build_arg=${build_arg:-$root/build-tidy}
 [[ -d $build_arg ]] ||
   die "build directory $build_arg not found" "configure it with: cmake --preset brew-tidy"
-build=$(cd "$build_arg" && pwd)
+build=$(abspath "$build_arg")
 [[ -f $build/CMakeCache.txt ]] ||
   die "$build is not a CMake build directory" "configure it with: cmake --preset brew-tidy"
 
@@ -309,7 +314,9 @@ FNR == 1 { end_file(); file = norm(FILENAME); depth = 0 }
   before = substr(line, 1, RSTART - 1)
   rest = substr(line, RSTART + RLENGTH)
   if (before ~ /\/$/) { bad("the directive must follow // exactly, not ///"); next }
-  if (text !~ /^\/\/ NOLINT\(/ && before !~ /^[ \t]*$/) {
+  if (text ~ /^\/\/ NOLINT\(/) {
+    if (before ~ /^[ \t]*$/) { bad("NOLINT must follow code on its line; put NOLINTNEXTLINE above the code instead"); next }
+  } else if (before !~ /^[ \t]*$/) {
     bad("NOLINTNEXTLINE, NOLINTBEGIN and NOLINTEND must stand alone on their line")
     next
   }
