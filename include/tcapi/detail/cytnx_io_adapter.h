@@ -185,7 +185,8 @@ namespace tcapi::detail {
       }
     }
 
-    // Opens `path` for writing a tensor, truncating any file there.
+    // Opens `path` for writing a tensor, creating any missing parent directories and truncating any
+    // file there.
     inline std::fstream open_for_save(const std::filesystem::path& path) {
       ensure_parent_exists(path);
       std::fstream out(path, std::ios::out | std::ios::trunc | std::ios::binary);

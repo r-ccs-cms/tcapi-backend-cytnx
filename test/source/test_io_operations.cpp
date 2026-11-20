@@ -18,9 +18,9 @@
 #include <streambuf>
 #include <string>
 #include <system_error>
-#include <utility>
 
 #if defined(__unix__) || defined(__APPLE__)
+#  include <stdlib.h>
 #  include <sys/resource.h>
 #endif
 
@@ -127,30 +127,6 @@ namespace {
     }
 
     std::filesystem::path path_;
-  };
-
-  // A directory created at `path` when nothing is there, and removed when the
-  // guard goes out of scope if it was created and is still empty; anything
-  // already at `path` is left alone.
-  class DirectoryAt {
-  public:
-    explicit DirectoryAt(std::filesystem::path path) : path_(std::move(path)) {
-      std::error_code ec;
-      created_ = std::filesystem::create_directory(path_, ec);
-    }
-    DirectoryAt(const DirectoryAt&) = delete;
-    DirectoryAt& operator=(const DirectoryAt&) = delete;
-    ~DirectoryAt() {
-      if (created_) {
-        std::error_code ec;
-        std::filesystem::remove(path_, ec);
-      }
-    }
-    bool created() const { return created_; }
-
-  private:
-    std::filesystem::path path_;
-    bool created_ = false;
   };
 
   // Collects what is written to std::cerr while it is in scope.
@@ -344,23 +320,6 @@ TEST_CASE_FIXTURE(SaveFixture, "tcapi::save names a path it cannot open") {
         = thrown_message<std::runtime_error>([&] { tcapi::save(ctx, sample, target); });
     check_contains(message, {"failed to create directories", target.string()});
   }
-
-  // The stream save writes through a temporary file; when that cannot be
-  // opened, the save created nothing there, so it removes nothing.
-  SUBCASE("the temporary file of a stream save") {
-    // A directory at the temporary file's path, removed on every exit so that
-    // later stream saves can use the path. If something is already there,
-    // perhaps another process's save, it is left alone and the subcase fails.
-    const auto temporary = tcapi::detail::make_temp_cytn_file();
-    const DirectoryAt blocker(temporary);
-    REQUIRE(blocker.created());
-    std::ostringstream out;
-    const std::string message
-        = thrown_message<std::runtime_error>([&] { tcapi::save(ctx, sample, out); });
-    check_contains(message, {"could not open file for writing", temporary.string()});
-    CHECK(out.str().empty());
-    CHECK(std::filesystem::is_directory(temporary));
-  }
 }
 
 // A stream that reports a failure as the tensor is copied to it makes the save
@@ -456,7 +415,52 @@ namespace {
     bool active_ = false;
   };
 
+  // Points TMPDIR, the first variable std::filesystem::temp_directory_path
+  // reads, at `dir` while in scope, and restores its previous value after.
+  class TemporaryDirectoryOverride {
+  public:
+    explicit TemporaryDirectoryOverride(const std::filesystem::path& dir) {
+      if (const char* previous = ::getenv("TMPDIR")) {
+        had_previous_ = true;
+        previous_ = previous;
+      }
+      ::setenv("TMPDIR", dir.c_str(), 1);
+    }
+    TemporaryDirectoryOverride(const TemporaryDirectoryOverride&) = delete;
+    TemporaryDirectoryOverride& operator=(const TemporaryDirectoryOverride&) = delete;
+    ~TemporaryDirectoryOverride() {
+      if (had_previous_) {
+        ::setenv("TMPDIR", previous_.c_str(), 1);
+      } else {
+        ::unsetenv("TMPDIR");
+      }
+    }
+
+  private:
+    bool had_previous_ = false;
+    std::string previous_;
+  };
+
 }  // namespace
+
+// The stream save writes through a temporary file; when that cannot be
+// opened, the save created nothing there, so it removes nothing. The test
+// blocks that file with a directory inside a private temporary directory, so
+// it neither meets nor blocks another process's stream save.
+TEST_CASE_FIXTURE(SaveFixture, "tcapi::save to a stream removes nothing it did not create") {
+  const ScratchDir private_temporary("tcapi_test_save_private_temporary");
+  const TemporaryDirectoryOverride redirect(private_temporary.path());
+  const auto temporary = tcapi::detail::make_temp_cytn_file();
+  REQUIRE(temporary.parent_path() == private_temporary.path());
+  std::filesystem::create_directory(temporary);
+  std::ostringstream out;
+
+  const std::string message
+      = thrown_message<std::runtime_error>([&] { tcapi::save(ctx, sample, out); });
+  check_contains(message, {"could not open file for writing", temporary.string()});
+  CHECK(out.str().empty());
+  CHECK(std::filesystem::is_directory(temporary));
+}
 
 // A save whose write fails partway reports it, naming the file, and a stream
 // save removes the partial temporary file and passes nothing on.
