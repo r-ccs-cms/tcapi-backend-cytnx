@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cytnx.hpp>
 #include <filesystem>
 #include <fstream>
@@ -12,6 +13,7 @@
 #include <thread>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "tcapi/cytnx_tensor_traits.h"
 #include "tcapi/cytnx_typed_tensor.h"
@@ -122,9 +124,18 @@ namespace tcapi::detail {
       if (!in.is_open()) {
         throw std::runtime_error("tcapi::save failed to open temporary file for reading");
       }
-      out << in.rdbuf();
-      if (!out) {
-        throw std::runtime_error("tcapi::save failed while streaming tensor contents");
+      // Inserting in.rdbuf() would report nothing when `out` stops accepting bytes partway, since
+      // it fails only when it inserts none; write sets badbit on any short write.
+      std::vector<char> buffer(std::size_t{1} << 16);
+      while (in.read(buffer.data(), static_cast<std::streamsize>(buffer.size()))
+             || in.gcount() > 0) {
+        out.write(buffer.data(), in.gcount());
+        if (!out) {
+          throw std::runtime_error("tcapi::save failed while streaming tensor contents");
+        }
+      }
+      if (in.bad()) {
+        throw std::runtime_error("tcapi::save failed while reading the temporary file");
       }
     }
 

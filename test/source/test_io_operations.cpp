@@ -1,21 +1,24 @@
 #include <doctest/doctest.h>
 #include <tcapi/tcapi.h>
 
-#include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <csignal>
+#include <cstddef>
 #include <cytnx.hpp>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
 #include <iostream>
 #include <iterator>
+#include <random>
 #include <sstream>
 #include <stdexcept>
 #include <streambuf>
 #include <string>
 #include <system_error>
-#include <vector>
+#include <utility>
 
 #if defined(__unix__) || defined(__APPLE__)
 #  include <sys/resource.h>
@@ -92,13 +95,19 @@ namespace {
   using SaveTensor = tcapi::CytnxTensor<cytnx::cytnx_double>;
 
   // A fresh, empty directory under the system temporary directory, removed
-  // with everything in it when the guard goes out of scope.
+  // with everything in it when the guard goes out of scope. Its name is `stem`
+  // followed by a tag that a per-process counter keeps distinct within this
+  // process and std::random_device and the clock make unlikely to recur in
+  // another, so that test runs sharing the temporary directory do not remove
+  // each other's files. Should the name be taken all the same, the constructor
+  // throws, so a guard never removes a directory it did not create.
   class ScratchDir {
   public:
-    explicit ScratchDir(const std::string& name)
-        : path_(std::filesystem::temp_directory_path() / name) {
-      std::filesystem::remove_all(path_);
-      std::filesystem::create_directories(path_);
+    explicit ScratchDir(const std::string& stem)
+        : path_(std::filesystem::temp_directory_path() / (stem + "_" + unique_tag())) {
+      if (!std::filesystem::create_directories(path_)) {
+        throw std::runtime_error("scratch directory already exists: " + path_.string());
+      }
     }
     ScratchDir(const ScratchDir&) = delete;
     ScratchDir& operator=(const ScratchDir&) = delete;
@@ -109,7 +118,39 @@ namespace {
     const std::filesystem::path& path() const { return path_; }
 
   private:
+    static std::string unique_tag() {
+      static std::atomic<unsigned long> counter{0};
+      static const auto process_draw = std::random_device{}();
+      return std::to_string(process_draw) + "_"
+             + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + "_"
+             + std::to_string(counter++);
+    }
+
     std::filesystem::path path_;
+  };
+
+  // A directory created at `path` when nothing is there, and removed when the
+  // guard goes out of scope if it was created and is still empty; anything
+  // already at `path` is left alone.
+  class DirectoryAt {
+  public:
+    explicit DirectoryAt(std::filesystem::path path) : path_(std::move(path)) {
+      std::error_code ec;
+      created_ = std::filesystem::create_directory(path_, ec);
+    }
+    DirectoryAt(const DirectoryAt&) = delete;
+    DirectoryAt& operator=(const DirectoryAt&) = delete;
+    ~DirectoryAt() {
+      if (created_) {
+        std::error_code ec;
+        std::filesystem::remove(path_, ec);
+      }
+    }
+    bool created() const { return created_; }
+
+  private:
+    std::filesystem::path path_;
+    bool created_ = false;
   };
 
   // Collects what is written to std::cerr while it is in scope.
@@ -126,14 +167,16 @@ namespace {
     std::streambuf* previous_;
   };
 
-  // The names of the entries directly in `dir`, sorted.
-  std::vector<std::string> entries(const std::filesystem::path& dir) {
-    std::vector<std::string> names;
+  // Checks that `dir` holds exactly one entry, named `name`.
+  void check_only_entry(const std::filesystem::path& dir, const std::string& name) {
+    std::size_t count = 0;
+    std::string found;
     for (const auto& entry : std::filesystem::directory_iterator(dir)) {
-      names.push_back(entry.path().filename().string());
+      ++count;
+      found = entry.path().filename().string();
     }
-    std::sort(names.begin(), names.end());
-    return names;
+    CHECK(count == 1);
+    CHECK(found == name);
   }
 
   std::string file_bytes(const std::filesystem::path& path) {
@@ -156,6 +199,30 @@ namespace {
     std::streamsize xsputn(const char*, std::streamsize) override { throw WriteRefused{}; }
   };
 
+  // A stream buffer that accepts its first `capacity` bytes and refuses the
+  // rest, as a full device would.
+  class LimitedBuffer : public std::streambuf {
+  public:
+    explicit LimitedBuffer(std::size_t capacity) : capacity_(capacity) {}
+    std::size_t accepted() const { return accepted_; }
+
+  protected:
+    int_type overflow(int_type ch) override {
+      if (traits_type::eq_int_type(ch, traits_type::eof())) {
+        return traits_type::not_eof(ch);
+      }
+      if (accepted_ == capacity_) {
+        return traits_type::eof();
+      }
+      ++accepted_;
+      return ch;
+    }
+
+  private:
+    std::size_t capacity_;
+    std::size_t accepted_ = 0;
+  };
+
   // A context and make_sample's tensor, for the save tests below.
   struct SaveFixture : tcapict::tcapi_test_fixture<SaveTensor> {
     const SaveTensor sample = make_sample<SaveTensor>(ctx);
@@ -173,7 +240,7 @@ TEST_CASE_FIXTURE(SaveFixture, "tcapi::save writes exactly the path it is given"
     const ScratchDir dir("tcapi_test_save_exact_path");
     const auto path = dir.path() / name;
     tcapi::save(ctx, sample, path);
-    CHECK(entries(dir.path()) == std::vector<std::string>{name});
+    check_only_entry(dir.path(), name);
     SaveTensor loaded;
     REQUIRE_NOTHROW(loaded = tcapi::load<SaveTensor>(ctx, path));
     check_real_sample(ctx, loaded);
@@ -186,7 +253,7 @@ TEST_CASE_FIXTURE(SaveFixture, "tcapi::save creates missing parents and replaces
   SUBCASE("missing parent directories") {
     const auto path = dir.path() / "fresh" / "sub" / "x.ten";
     tcapi::save(ctx, sample, path);
-    CHECK(entries(path.parent_path()) == std::vector<std::string>{"x.ten"});
+    check_only_entry(path.parent_path(), "x.ten");
     check_real_sample(ctx, tcapi::load<SaveTensor>(ctx, path));
   }
 
@@ -263,14 +330,15 @@ TEST_CASE_FIXTURE(SaveFixture, "tcapi::save names a path it cannot open") {
   // opened, the save created nothing there, so it removes nothing.
   SUBCASE("the temporary file of a stream save") {
     // A directory at the temporary file's path, removed on every exit so that
-    // later stream saves can use the path.
+    // later stream saves can use the path. If something is already there,
+    // perhaps another process's save, it is left alone and the subcase fails.
     const auto temporary = tcapi::detail::make_temp_cytn_file();
-    const ScratchDir blocker(temporary.filename().string());
-    REQUIRE(blocker.path() == temporary);
+    const DirectoryAt blocker(temporary);
+    REQUIRE(blocker.created());
     std::ostringstream out;
     const std::string message
         = thrown_message<std::runtime_error>([&] { tcapi::save(ctx, sample, out); });
-    check_contains(message, {"could not open file for writing"});
+    check_contains(message, {"could not open file for writing", temporary.string()});
     CHECK(out.str().empty());
     CHECK(std::filesystem::is_directory(temporary));
   }
@@ -279,13 +347,27 @@ TEST_CASE_FIXTURE(SaveFixture, "tcapi::save names a path it cannot open") {
 // A stream that reports a failure as the tensor is copied to it makes the save
 // throw, and the temporary file is removed all the same.
 TEST_CASE_FIXTURE(SaveFixture, "tcapi::save reports a stream that fails") {
-  RefusingBuffer refusing;
-  std::ostream out(&refusing);
   const auto temporary = tcapi::detail::make_temp_cytn_file();
 
-  const std::string message
-      = thrown_message<std::runtime_error>([&] { tcapi::save(ctx, sample, out); });
-  check_contains(message, {"failed while streaming tensor contents"});
+  SUBCASE("refusing every byte") {
+    RefusingBuffer refusing;
+    std::ostream out(&refusing);
+    const std::string message
+        = thrown_message<std::runtime_error>([&] { tcapi::save(ctx, sample, out); });
+    check_contains(message, {"failed while streaming tensor contents"});
+  }
+
+  // Inserting a whole stream buffer reports no failure once some bytes went
+  // through, so this case catches a copy that relies on that.
+  SUBCASE("accepting only the first bytes") {
+    LimitedBuffer limited(10);
+    std::ostream out(&limited);
+    const std::string message
+        = thrown_message<std::runtime_error>([&] { tcapi::save(ctx, sample, out); });
+    check_contains(message, {"failed while streaming tensor contents"});
+    CHECK(limited.accepted() == 10);
+  }
+
   CHECK_FALSE(std::filesystem::exists(temporary));
 }
 
