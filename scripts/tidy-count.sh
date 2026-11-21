@@ -197,10 +197,12 @@ function norm(p) {
 function or_dash(s) {
   return s == "" ? "-" : s
 }
-# Writes every BUILD_DIR/ and DIR/ in s, wherever it occurs, as <build>/ and
-# <root>/, so that a path inside an option such as -DP=DIR/inc is rewritten too.
+# Writes BUILD_DIR and DIR in the option or file s as <build> and <root>, where
+# each stands as a path of its own: at the start of s or after one of = : ; ,
+# and followed by /, the end of s or one of those, as in DIR/inc, -DP=DIR and
+# -DP=DIR:DIR/b, but not in DIR2 or /c/DIR.
 function rel(s) {
-  return replace_all(replace_all(s, build, "<build>/"), root, "<root>/")
+  return replace_dir(replace_dir(s, build, "<build>"), root, "<root>")
 }
 function trim(s) {
   sub(/\r$/, "", s)
@@ -209,11 +211,18 @@ function trim(s) {
   sub(/ +$/, "", s)
   return s
 }
-function replace_all(s, from, to,    out, i) {
+# Replaces the directory dir, given with or without its trailing /, by to in s
+# where it stands as a path of its own, as rel() describes.
+function replace_dir(s, dir, to,    out, i, before, after) {
+  sub(/\/$/, "", dir)
+  if (dir == "") return s
   out = ""
-  while ((i = index(s, from)) > 0) {
-    out = out substr(s, 1, i - 1) to
-    s = substr(s, i + length(from))
+  while ((i = index(s, dir)) > 0) {
+    before = (i > 1) ? substr(s, i - 1, 1) : substr(out, length(out), 1)
+    after = substr(s, i + length(dir), 1)
+    if ((before == "" || before ~ /[=:;,]/) && (after == "" || after ~ /[\/=:;,]/)) out = out substr(s, 1, i - 1) to
+    else out = out substr(s, 1, i - 1) dir
+    s = substr(s, i + length(dir))
   }
   return out s
 }
@@ -364,6 +373,10 @@ done
 # a GUI client runs. A preset's environment variables are not reapplied.
 cmake_command=$(cache_value CMAKE_COMMAND)
 [[ -x $cmake_command ]] || cmake_command=cmake
+# CMake can succeed without writing the database, as when every target turns
+# EXPORT_COMPILE_COMMANDS off; removing it first keeps a stale one from being
+# read as current.
+rm -f "$build/compile_commands.json"
 if ! "$cmake_command" "$build" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON >"$work/cmake.log" 2>&1; then
   cat "$work/cmake.log" >&2
   die "re-running CMake on $build failed"
@@ -383,16 +396,17 @@ function value(line) {
 /^[ \t]*"command": "/ { cmd = value($0) }
 /^[ \t]*"file": "/ { print value($0) "\t" cmd "\t" dir }
 ' "$build/compile_commands.json" >"$work/db.tsv"
+# The entries for TCAPI's sources.
+awk -F'\t' -v p="$root/source/" 'index($1, p) == 1' "$work/db.tsv" >"$work/db-tcapi.tsv"
 
 # clang-tidy runs each command in its directory and reports a relative path
 # from there; the warning parser reads such paths from BUILD_DIR.
 while IFS= read -r dir; do
   [[ $dir -ef $build ]] ||
     die "a TCAPI source compiles in $dir, not in $build, where this script reads relative warning paths from"
-done < <(awk -F'\t' -v p="$root/source/" 'index($1, p) == 1 { print $3 }' "$work/db.tsv" | LC_ALL=C sort -u)
+done < <(awk -F'\t' '{ print $3 }' "$work/db-tcapi.tsv" | LC_ALL=C sort -u)
 
-awk -F'\t' -v p="$root/source/" 'index($1, p) == 1 { print $1 }' "$work/db.tsv" |
-  LC_ALL=C sort -u >"$work/db-sources"
+awk -F'\t' '{ print $1 }' "$work/db-tcapi.tsv" | LC_ALL=C sort -u >"$work/db-sources"
 find "$root/source" -type f -name '*.cpp' | LC_ALL=C sort >"$work/disk-sources"
 missing=$(LC_ALL=C comm -23 "$work/disk-sources" "$work/db-sources")
 [[ -z $missing ]] ||
@@ -402,7 +416,7 @@ nsources=$(count_lines "$work/db-sources")
 ((nsources > 0)) || die "no source under $root/source is in $build/compile_commands.json"
 
 # One `config\t<source>\t<options>` line per source.
-awk -F'\t' "${norm_vars[@]}" -v p="$root/source/" "$awk_lib"'
+awk -F'\t' "${norm_vars[@]}" "$awk_lib"'
 # Splits the shell command line s into words in w, as sh would: quotes group,
 # and a backslash escapes the next character outside single quotes.
 function shell_words(s, w,    n, i, c, cur, q, started) {
@@ -426,16 +440,19 @@ function shell_words(s, w,    n, i, c, cur, q, started) {
 }
 # A word holding a space is written quoted, so that the words stay apart.
 function word(s) { return s ~ /[ \t]/ ? "\"" s "\"" : s }
-index($1, p) == 1 {
+{
   n = shell_words($2, t)
   opts = ""
   for (i = 1; i <= n; i++) {
-    if (t[i] ~ /^-[DU]./ || t[i] ~ /^-std=/ || t[i] ~ /^-include./ || t[i] ~ /^-imacros./) opts = opts " " word(rel(t[i]))
+    # -include and -imacros joined to their file are recorded separated, so
+    # that the file is a word of its own for rel().
+    if (match(t[i], /^-(include|imacros)./)) opts = opts " " substr(t[i], 1, RLENGTH - 1) " " word(rel(substr(t[i], RLENGTH)))
+    else if (t[i] ~ /^-[DU]./ || t[i] ~ /^-std=/) opts = opts " " word(rel(t[i]))
     else if ((t[i] == "-D" || t[i] == "-U" || t[i] == "-include" || t[i] == "-imacros") && i < n) { opts = opts " " t[i] " " word(rel(t[i + 1])); i++ }
   }
   sub(/^ /, "", opts)
   print "config\t" norm($1) "\t" or_dash(opts)
-}' "$work/db.tsv" | LC_ALL=C sort -u >"$work/config"
+}' "$work/db-tcapi.tsv" | LC_ALL=C sort -u >"$work/config"
 
 if [[ $mode == check ]]; then
   awk -F'\t' '$1 == "config"' <"$baseline" | LC_ALL=C sort -u >"$work/base-config"
@@ -512,8 +529,11 @@ FNR == 1 { end_file(); file = norm(FILENAME); depth = 0 }
     # Code is what remains once leading block comments are set aside, unless a
     # line comment starts there, which makes the rest comment too.
     code = before
-    # A */ before any /* closes a comment begun on an earlier line.
-    if ((c = index(code, "*/")) > 0 && ((o = index(code, "/*")) == 0 || o > c)) code = substr(code, c + 2)
+    # A line commented out with // holds no code, though a */ in it would read
+    # as closing a comment. On any other line, a */ before any /* closes a
+    # comment begun on an earlier line, a // inside it, as in a URL, included.
+    if (code ~ /^[ \t]*\/\//) code = ""
+    else if ((c = index(code, "*/")) > 0 && ((o = index(code, "/*")) == 0 || o > c)) code = substr(code, c + 2)
     while (sub(/^[ \t]*\/\*([^*]|\*+[^*\/])*\*+\//, "", code)) {}
     # A /* still left there is unclosed, so the directive sits inside it.
     if (code ~ /^[ \t]*$/ || code ~ /^[ \t]*\/[\/*]/) { bad("NOLINT must follow code on its line; put NOLINTNEXTLINE above the code instead"); next }
