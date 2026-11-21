@@ -90,7 +90,7 @@ The check does not see a warning that replaces a fixed one with the same file, c
 
 These guarantees hold for the setup this guide describes:
 
-- Homebrew LLVM 21 or 23;
+- Homebrew LLVM 21 or 23 under `/opt/homebrew`, the Apple silicon prefix the `brew` presets assume;
 - a build configured with `brew-tidy` or the fallback above, whose TCAPI compile commands run in the build directory, name their include directories by absolute path, and use no response file;
 - pushes of one branch from a clean checkout whose remote-tracking refs are current.
 
