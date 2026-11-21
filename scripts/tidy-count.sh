@@ -6,9 +6,10 @@
 #                              [--root DIR] [BUILD_DIR]
 #
 #   (no mode)  print the counts
-#   --update   write the baseline FILE from the current warnings, refusing
-#              while a file under DIR/source or DIR/include other than an
-#              editor or Finder file (see below) is not tracked by git
+#   --update   write the baseline FILE from the current warnings, refusing,
+#              when DIR is a git checkout, while a file under DIR/source or
+#              DIR/include other than an editor or Finder file (see below) is
+#              not tracked by git
 #   --check    compare the current warnings with the baseline FILE; exit
 #              nonzero on any difference
 #
@@ -211,6 +212,11 @@ function replace_all(s, from, to,    out, i) {
     s = substr(s, i + length(from))
   }
   return out s
+}
+# Whether s is a progress line: a run-clang-tidy header such as "[1/9] ..." or
+# "[ 1/10][0.3s] ...", or clang-tidy'"'"'s "[1/1] (1/2) Processing file ...".
+function progress(s) {
+  return s ~ /^\[ *[0-9]+\/[0-9]+\]/
 }
 '
 
@@ -555,17 +561,18 @@ analyzed=$(awk '/^Running clang-tidy .*for [0-9]+ files out of/ { for (i = 1; i 
   die "run-clang-tidy analyzed ${analyzed:-no} files, but $nsources sources are in the database"
 
 # One `<path>\t<line>\t<column>\t<checks>\t<message>` line per distinct warning.
-# A message can span lines, as a [[deprecated("...\n...")]] text does; its
-# lines are joined with spaces until one ends with what reads as the [checks]
-# list (see has_checks). A warning still without one when its source excerpt,
-# the next diagnostic at a location or the output's end comes stops the
-# script, since its checks cannot be told; a line such as "error: ..." with no
-# location is read as part of the message. A message line that itself ends in
-# such a list, as in "see [foo-bar]", is taken for it. The excerpt cannot mark
-# where a message ends instead: clang omits it for some warnings, and
-# clang-tidy can print a "note: this fix will not be applied ..." line between
-# a message and it.
-awk '
+# A message can span lines, as a [[deprecated("...\n...")]] text does. A
+# warning's lines run until its source excerpt (lines like "   12 | code" and
+# "      | ^"), the next diagnostic at a location, a progress line such as
+# "[1/9] ..." or "[1/1] (1/2) Processing file ...", or the output's end;
+# clang omits the excerpt for some warnings, so it cannot end them alone. The
+# last of those lines that ends with what reads as the [checks] list (see
+# has_checks) ends the message, and the lines after it, such as clang-tidy's
+# "note: this fix will not be applied ...", are not part of it. A warning
+# whose lines hold no such list stops the script, since its checks cannot be
+# told; a message line that itself ends in such a list, as in "see [foo-bar]",
+# is taken for it only when no later line ends in one.
+awk "$awk_lib"'
 BEGIN {
   at = ":[0-9]+:[0-9]+: "
   warning = at "warning: "
@@ -576,9 +583,29 @@ BEGIN {
 function has_checks(s) {
   return match(s, / \[[^] ,]*-[^] ,]*(,[^] ,]*-[^] ,]*)*\]$/)
 }
+# Drops the `.` and `dir/..` steps of the path p, so that a header reached as
+# include/x.h and as source/../include/x.h is one location, as clang can spell
+# it both ways.
+function canon(p,    n, part, k, stack, i, out) {
+  n = split(p, part, "/")
+  k = 0
+  for (i = 1; i <= n; i++) {
+    if (part[i] == "." || (part[i] == "" && i > 1)) continue
+    if (part[i] == "..") {
+      if (k > 0 && stack[k] != ".." && stack[k] != "") { k--; continue }
+      if (k == 1 && stack[1] == "") continue
+    }
+    stack[++k] = part[i]
+  }
+  if (k == 0) return "."
+  if (k == 1 && stack[1] == "") return "/"
+  out = stack[1]
+  for (i = 2; i <= k; i++) out = out "/" stack[i]
+  return out
+}
 function emit(line,    path, pos, lc, rest, checks, msg) {
   match(line, warning)
-  path = substr(line, 1, RSTART - 1)
+  path = canon(substr(line, 1, RSTART - 1))
   pos = substr(line, RSTART + 1, RLENGTH - 1)
   sub(/: warning: $/, "", pos)
   split(pos, lc, ":")
@@ -589,27 +616,29 @@ function emit(line,    path, pos, lc, rest, checks, msg) {
   gsub(/\t/, " ", msg)
   print path "\t" lc[1] "\t" lc[2] "\t" checks "\t" msg
 }
-function dangling() {
-  print "  " pending > "/dev/stderr"
-  failed = 1
-  exit 1
+function finish() {
+  if (pending == "") return
+  if (best == "") {
+    print "  " pending > "/dev/stderr"
+    failed = 1
+    exit 1
+  }
+  emit(best)
+  pending = best = ""
 }
-# The next diagnostic at a location, or the source excerpt under this one
-# (lines like "   12 | code" and "      | ^"), ends a message. A line opening
-# with "note: " does not, since a message line can read so.
-pending != "" && ($0 ~ (at "(warning|error|fatal error|note|remark): ") || /^ *[0-9]* \| /) { dangling() }
+$0 ~ (at "(warning|error|fatal error|note|remark): ") || /^ *[0-9]* \| / || progress($0) { finish() }
 pending != "" {
   pending = pending " " $0
-  if (has_checks(pending)) { emit(pending); pending = "" }
+  if (has_checks($0)) best = pending
   next
 }
 $0 ~ warning {
-  if (has_checks($0)) emit($0)
-  else pending = $0
+  pending = $0
+  best = has_checks($0) ? $0 : ""
 }
 END {
   if (failed) exit 1
-  if (pending != "") dangling()
+  finish()
 }' "$work/raw" | LC_ALL=C sort -u >"$work/warnings.tsv" ||
   die "the warning above has no [checks] list, so it cannot be counted"
 
@@ -641,7 +670,11 @@ function shell_quote(s,    q) {
   return sq q sq
 }
 BEGIN { while ((getline s < sources) > 0) { list[++n] = s; count[s] = 0 } }
-/^\[ *[0-9]+\/[0-9]+\]/ {
+# LLVM 23 clang-tidy prints a line like "[1/1] (1/2) Processing file <source>."
+# for each compile command of a source the database lists more than once; it
+# is not a run-clang-tidy header.
+progress($0) && /^[^ ]+ \([0-9]+\/[0-9]+\) Processing file / { next }
+progress($0) {
   # The header ends with the source: as it is in LLVM 21, and quoted as
   # Python'"'"'s shlex.quote does in LLVM 23.
   current = ""
