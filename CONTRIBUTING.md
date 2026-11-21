@@ -87,3 +87,13 @@ Explain in the pull request what this shows. Someone with the baseline's environ
 ### Limits
 
 The check does not see a warning that replaces a fixed one with the same file, check, message and line text, nor one suppressed diagnostic replacing another under the same directives with every count unchanged, nor, in the rare case that the block's checksum collides, an edit inside a `NOLINTBEGIN` block. It records only the compile options named above, not, for example, `-arch`, `-O` or `-f` options, nor the versions of dependencies found through include paths. A change in any of those can change the warnings; the check then fails, and the pull request that makes the change updates the baseline.
+
+These guarantees hold for the setup this guide describes:
+
+- Homebrew LLVM 21 or 23;
+- a build configured with `brew-tidy` or the fallback above, whose TCAPI compile commands run in the build directory, name their include directories by absolute path, and use no response file;
+- pushes of one branch from a clean checkout whose remote-tracking refs are current.
+
+They also assume that source text does not imitate clang-tidy's own output. A diagnostic message whose own text spans several lines can be misread if one of those lines looks like a `file:L:C: warning:` line, a source excerpt line such as `   12 | `, or a check list such as `[module-check]`. A NOLINT line is judged on its own, so a line whose split into code and comment depends on a block comment opened on an earlier line can be misjudged. Outside these bounds the script stops where it can tell, and may otherwise miss a change.
+
+pre-commit runs the hook only when it finds that the push adds commits, which it judges from your local remote-tracking refs. After a branch was deleted on the remote, run `git fetch --prune` before pushing it again.

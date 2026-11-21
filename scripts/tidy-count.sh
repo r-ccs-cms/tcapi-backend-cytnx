@@ -199,8 +199,8 @@ function or_dash(s) {
 }
 # Writes BUILD_DIR and DIR in the option or file s as <build> and <root>, where
 # each stands as a path of its own: at the start of s or after one of = : ; ,
-# and followed by /, the end of s or one of those, as in DIR/inc, -DP=DIR and
-# -DP=DIR:DIR/b, but not in DIR2 or /c/DIR.
+# or a quote, and followed by /, the end of s or one of those, as in DIR/inc,
+# -DP=DIR, -DP="DIR" and -DP=DIR:DIR/b, but not in DIR2 or /c/DIR.
 function rel(s) {
   return replace_dir(replace_dir(s, build, "<build>"), root, "<root>")
 }
@@ -220,7 +220,7 @@ function replace_dir(s, dir, to,    out, i, before, after) {
   while ((i = index(s, dir)) > 0) {
     before = (i > 1) ? substr(s, i - 1, 1) : substr(out, length(out), 1)
     after = substr(s, i + length(dir), 1)
-    if ((before == "" || before ~ /[=:;,]/) && (after == "" || after ~ /[\/=:;,]/)) out = out substr(s, 1, i - 1) to
+    if ((before == "" || before ~ /[=:;,"'"'"']/) && (after == "" || after ~ /[\/=:;,"'"'"']/)) out = out substr(s, 1, i - 1) to
     else out = out substr(s, 1, i - 1) dir
     s = substr(s, i + length(dir))
   }
@@ -444,6 +444,8 @@ function word(s) { return s ~ /[ \t]/ ? "\"" s "\"" : s }
   n = shell_words($2, t)
   opts = ""
   for (i = 1; i <= n; i++) {
+    # clang-tidy reads the options in a response file, which this does not.
+    if (t[i] ~ /^@/) { print "  " $1 ": " t[i] > "/dev/stderr"; exit 1 }
     # -include and -imacros joined to their file are recorded separated, so
     # that the file is a word of its own for rel().
     if (match(t[i], /^-(include|imacros)./)) opts = opts " " substr(t[i], 1, RLENGTH - 1) " " word(rel(substr(t[i], RLENGTH)))
@@ -452,7 +454,8 @@ function word(s) { return s ~ /[ \t]/ ? "\"" s "\"" : s }
   }
   sub(/^ /, "", opts)
   print "config\t" norm($1) "\t" or_dash(opts)
-}' "$work/db-tcapi.tsv" | LC_ALL=C sort -u >"$work/config"
+}' "$work/db-tcapi.tsv" | LC_ALL=C sort -u >"$work/config" ||
+  die "the compile command above reads a response file, whose options the configuration check cannot see"
 
 if [[ $mode == check ]]; then
   awk -F'\t' '$1 == "config"' <"$baseline" | LC_ALL=C sort -u >"$work/base-config"
