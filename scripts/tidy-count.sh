@@ -489,12 +489,17 @@ fi
 # violations to nolint.errors.
 # Every file, whatever its extension, since clang-tidy reads any file a source
 # includes, except editor and Finder files, which no source includes. The
-# patterns are drop_editor_files's. The headers CMake generates into
-# BUILD_DIR/include from templates are scanned too, so that a directive in a
-# template is keyed by the code it covers once the template is filled in.
-scan_dirs=("$root/source" "$root/include")
-[[ ! -d $build/include ]] || scan_dirs+=("$build/include")
-find -L "${scan_dirs[@]}" -type f \
+# patterns are drop_editor_files's. The header CMake fills in from each
+# template DIR/include/<path>.in, BUILD_DIR/include/<path>, is scanned too, so
+# that a directive in a template is keyed by the code it covers once filled
+# in; one whose template is gone is a leftover CMake does not remove.
+scan_paths=("$root/source" "$root/include")
+while IFS= read -r template; do
+  generated=$build/include/${template#"$root/include/"}
+  generated=${generated%.in}
+  [[ ! -f $generated ]] || scan_paths+=("$generated")
+done < <(find -L "$root/include" -type f -name '*.in')
+find -L "${scan_paths[@]}" -type f \
   ! -name '*~' ! -name '*.swp' ! -name '*.swo' ! -name '#*#' ! -name '.#*' ! -name .DS_Store \
   -exec env LC_ALL=C awk \
   "${norm_vars[@]}" \
