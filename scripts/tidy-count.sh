@@ -380,9 +380,10 @@ cmake_command=$(cache_value CMAKE_COMMAND)
 # read as current.
 rm -f "$build/compile_commands.json"
 # The macOS Homebrew toolchain runs `brew --prefix` on every configure, and a
-# GUI client's PATH lacks Homebrew; the directory of a Homebrew CMake holds brew.
-cmake_path=$PATH
-[[ $cmake_command != /* ]] || cmake_path=$(dirname -- "$cmake_command"):$PATH
+# GUI client's PATH lacks Homebrew. Look for brew where Homebrew installs it,
+# on Apple silicon and on Intel, after the directory of the CMake used.
+cmake_path=/opt/homebrew/bin:/usr/local/bin:$PATH
+[[ $cmake_command != /* ]] || cmake_path=$(dirname -- "$cmake_command"):$cmake_path
 if ! PATH=$cmake_path "$cmake_command" "$build" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON >"$work/cmake.log" 2>&1; then
   cat "$work/cmake.log" >&2
   die "re-running CMake on $build failed"
