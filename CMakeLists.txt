@@ -322,7 +322,7 @@ tcapi_enable_warnings(${PROJECT_NAME})
 # Setting TCAPI_CLANG_TIDY to a clang-tidy executable runs it, with the checks in
 # .clang-tidy, on every TCAPI source the build compiles. It is set on the TCAPI
 # target only, so Cytnx and the other dependencies are not checked.
-set(TCAPI_CLANG_TIDY "" CACHE FILEPATH "clang-tidy executable to run on TCAPI's sources; empty disables it")
+set(TCAPI_CLANG_TIDY "" CACHE STRING "clang-tidy executable to run on TCAPI's sources; empty disables it")
 if(TCAPI_CLANG_TIDY)
   set_target_properties(${PROJECT_NAME} PROPERTIES CXX_CLANG_TIDY "${TCAPI_CLANG_TIDY}")
 endif()

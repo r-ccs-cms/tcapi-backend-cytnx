@@ -6,7 +6,9 @@
 #                              [--root DIR] [BUILD_DIR]
 #
 #   (no mode)  print the counts
-#   --update   write the baseline FILE from the current warnings
+#   --update   write the baseline FILE from the current warnings, refusing
+#              while a file under DIR/source or DIR/include other than an
+#              editor backup or swap file is not tracked by git
 #   --check    compare the current warnings with the baseline FILE; exit
 #              nonzero on any difference
 #
@@ -43,7 +45,8 @@
 # present on both sides, differ: the counts would then differ for reasons
 # other than the code.
 #
-# Every line under DIR/source and DIR/include containing the text NOLINT must
+# Every line of every file under DIR/source and DIR/include, editor backup and
+# swap files (*~, *.swp, *.swo, #*#, .#*) aside, containing the text NOLINT must
 # be one directive in one of these forms, because clang-tidy honors that text
 # anywhere on a line, in many spellings:
 #   // NOLINT(<checks>): <reason>
@@ -59,7 +62,8 @@
 # Run by pre-commit at pre-push, the script also requires that the pushed
 # commit is HEAD, that `git status` lists no change pre-commit leaves in place
 # when told to show every untracked file and submodule change, and that no
-# ignored file lies under DIR/source or DIR/include. Changes git is told to
+# ignored file lies under DIR/source or DIR/include, untracked and ignored
+# editor backup and swap files aside. Changes git is told to
 # ignore, such as with update-index --skip-worktree, are not seen.
 
 set -euo pipefail
@@ -140,7 +144,7 @@ if [[ -z $tidy ]]; then
 fi
 tidy=${tidy:-clang-tidy}
 tidy_path=$(command -v "$tidy" || true)
-[[ -n $tidy_path ]] || die "clang-tidy not found: $tidy" "install it with: brew install llvm"
+[[ -n $tidy_path ]] || die "clang-tidy not found: $tidy" "install it with: brew install llvm, or set CLANG_TIDY to the clang-tidy to use"
 runner="$(dirname "$tidy_path")/run-clang-tidy"
 [[ -x $runner ]] || runner=$(command -v run-clang-tidy || true)
 [[ -n $runner ]] || die "run-clang-tidy not found" "install it with: brew install llvm"
@@ -178,6 +182,25 @@ function replace_all(s, from, to,    out, i) {
 }
 '
 
+# Drops the lines of standard input naming an untracked or ignored editor
+# backup or swap file (*~, *.swp, *.swo, #*#, .#*), the files the NOLINT scan's
+# find also skips. With `status`, the lines are `git status --porcelain` lines,
+# and only `?? ` and `!! ` lines can be dropped; otherwise each line is a path.
+drop_editor_files() {
+  awk -v status="${1:-}" '{
+    p = $0
+    if (status != "") {
+      if (p !~ /^(\?\?|!!) /) { print; next }
+      p = substr(p, 4)
+    }
+    sub(/"$/, "", p)
+    n = split(p, parts, "/")
+    b = parts[n]
+    if (b ~ /~$/ || b ~ /\.sw[po]$/ || b ~ /^#.*#$/ || b ~ /^\.#/) next
+    print
+  }'
+}
+
 # Counts identical lines of standard input as `<count>\t<line>`.
 count_keys() {
   LC_ALL=C sort | uniq -c | awk '{ c = $1; sub(/^ *[0-9]+ /, ""); print c "\t" $0 }'
@@ -201,6 +224,7 @@ flags, with the run-clang-tidy of LLVM 21 or 23, whose output this script reads)
   git worktree add <dir> <base commit>
   git -C <dir> submodule update --init --recursive
   configure <dir> and this tree the same way, with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+  set CLANG_TIDY to the clang-tidy to use, unless the builds set TCAPI_CLANG_TIDY
   $0 --update --baseline <file> --root <dir> <dir's build directory>
   $0 --check --baseline <file> <this tree's build directory>
 CONTRIBUTING.md describes this. To push without the check: SKIP=clang-tidy-baseline git push
@@ -233,12 +257,24 @@ if [[ ${PRE_COMMIT:-} == 1 && -n ${PRE_COMMIT_REMOTE_NAME:-} ]]; then
       "check out the branch you push, and push one branch at a time"
   # Spelled out so that status.showUntrackedFiles and the submodule settings
   # cannot hide a change, and ignored files under source/ and include/ count
-  # too, since the analysis reads every file there.
-  dirty=$(git -C "$root" status --porcelain --untracked-files=all --ignore-submodules=none
-    git -C "$root" ls-files --others --ignored --exclude-standard -- source include | awk '{ print "!! " $0 }')
+  # too, since the analysis reads every file there but editor files.
+  dirty=$({
+    git -C "$root" status --porcelain --untracked-files=all --ignore-submodules=none
+    git -C "$root" ls-files --others --ignored --exclude-standard -- source include | awk '{ print "!! " $0 }'
+  } | drop_editor_files status)
   [[ -z $dirty ]] ||
     die "the working tree differs from HEAD, which is what is pushed:" "$dirty" \
       "commit or undo these changes, or move the listed files out of the tree, before pushing"
+fi
+
+# The analysis reads every file under source/ and include/ but editor files, so
+# a baseline written with files git does not track holds entries nobody else
+# reproduces.
+if [[ $mode == update ]] && git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
+  untracked=$(git -C "$root" ls-files --others -- source include | drop_editor_files)
+  [[ -z $untracked ]] ||
+    die "--update would record files git does not track:" "$untracked" \
+      "commit them or move them out of the tree first"
 fi
 
 # --- Configure, and check the compilation database ---------------------------
@@ -297,7 +333,7 @@ index($1, p) == 1 {
     else if ((t[i] == "-D" || t[i] == "-U" || t[i] == "-include" || t[i] == "-imacros") && i < n) { opts = opts " " t[i] " " t[i + 1]; i++ }
   }
   sub(/^ /, "", opts)
-  print "config\t" norm($1) "\t" replace_all(opts, root, "<root>/")
+  print "config\t" norm($1) "\t" replace_all(replace_all(opts, build, "<build>/"), root, "<root>/")
 }' "$work/db.tsv" | LC_ALL=C sort -u >"$work/config"
 
 if [[ $mode == check ]]; then
@@ -320,7 +356,12 @@ fi
 
 # Writes `nolint\t...` keys to nolint.keys, `<check>` lines to nolint.checks and
 # violations to nolint.errors.
-find "$root/source" "$root/include" -type f -exec env LC_ALL=C awk \
+# Every file, whatever its extension, since clang-tidy reads any file a source
+# includes, except editor backup and swap files, which no source includes. The
+# patterns are drop_editor_files's.
+find "$root/source" "$root/include" -type f \
+  ! -name '*~' ! -name '*.swp' ! -name '*.swo' ! -name '#*#' ! -name '.#*' \
+  -exec env LC_ALL=C awk \
   "${norm_vars[@]}" \
   -v keys="$work/nolint.keys" -v checks_out="$work/nolint.checks" -v errors="$work/nolint.errors" \
   "$awk_lib"'

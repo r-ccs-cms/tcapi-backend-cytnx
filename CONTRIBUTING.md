@@ -38,13 +38,13 @@ scripts/tidy-count.sh --update   # rewrite .clang-tidy-baseline
 
 When your change fixes or adds warnings, run `--update` and commit `.clang-tidy-baseline` with the change. In the pull request description, explain every entry whose count rises.
 
-The pre-push hook analyzes your working tree, so it fails unless the commit you push is `HEAD`, and it fails on a staged change, an untracked file, a modified submodule, or an ignored file under `source/` or `include/`, even when `status.showUntrackedFiles` or a submodule setting hides it from `git status`. pre-commit sets unstaged changes to tracked files aside first, so those do not fail it. It does not see a change git is told to ignore, such as one under `git update-index --skip-worktree`. It sees one branch per push. Push one branch at a time from a clean checkout. To push without the check, run `SKIP=clang-tidy-baseline git push`.
+The pre-push hook analyzes your working tree, so it fails unless the commit you push is `HEAD`, and it fails on a staged change, an untracked file, a modified submodule, or an ignored file under `source/` or `include/`, even when `status.showUntrackedFiles` or a submodule setting hides it from `git status`; untracked or ignored editor backup and swap files do not count. `--update` likewise refuses while a file under `source/` or `include/`, editor files aside, is not tracked. pre-commit sets unstaged changes to tracked files aside first, so those do not fail it. It does not see a change git is told to ignore, such as one under `git update-index --skip-worktree`. It sees one branch per push. Push one branch at a time from a clean checkout. To push without the check, run `SKIP=clang-tidy-baseline git push`.
 
 ### Warnings that are not fixed
 
 Fix a warning where you can. A warning that cannot be fixed is handled in one of three ways.
 
-**A warning that cannot be avoided at one site**, where disabling its check for the whole repository would be unreasonable, gets a directive on or above that site naming the check and saying why. These are the only accepted forms. A line containing the text `NOLINT` in any other form fails the check, because clang-tidy honors that text anywhere on a line and in many spellings, some of which suppress every check:
+**A warning that cannot be avoided at one site**, where disabling its check for the whole repository would be unreasonable, gets a directive on or above that site naming the check and saying why. These are the only accepted forms. A line of any file under `source/` or `include/`, whatever its extension, containing the text `NOLINT` in any other form fails the check (editor backup and swap files such as `*~` and `*.swp` aside), because clang-tidy honors that text anywhere on a line and in many spellings, some of which suppress every check:
 
 ```cpp
 code; // NOLINT(<checks>): <reason>
@@ -73,6 +73,9 @@ Without the baseline's environment, compare your change with its base commit in 
 git worktree add ../base <base commit>
 git -C ../base submodule update --init --recursive
 # Configure ../base and your tree the same way, with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON.
+# Unless the builds set TCAPI_CLANG_TIDY, name the clang-tidy to use; Homebrew's
+# llvm is not on PATH:
+export CLANG_TIDY=/opt/homebrew/opt/llvm/bin/clang-tidy
 scripts/tidy-count.sh --update --baseline /tmp/base.txt --root ../base <build directory of ../base>
 scripts/tidy-count.sh --check --baseline /tmp/base.txt <build directory of your tree>
 ```
