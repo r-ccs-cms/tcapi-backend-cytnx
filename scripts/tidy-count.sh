@@ -62,7 +62,8 @@
 #
 # Run by pre-commit at pre-push, the script also requires that the pushed
 # commit is HEAD, that `git status` lists no change pre-commit leaves in place
-# when told to show every untracked file and submodule change, and that no
+# when told to show every untracked file and submodule change (untracked
+# files inside a submodule aside), and that no
 # ignored file lies under DIR/source or DIR/include, untracked and ignored
 # editor and Finder files aside. Changes git is told to
 # ignore, such as with update-index --skip-worktree, are not seen.
@@ -107,7 +108,7 @@ while (($#)); do
       mode=${1#--}
       ;;
     --baseline | --root)
-      (($# >= 2)) && [[ $2 != -* ]] || die "$1 needs a path, not ${2:-nothing}"
+      (($# >= 2)) && [[ -n $2 && $2 != -* ]] || die "$1 needs a path, not ${2:-nothing}"
       if [[ $1 == --baseline ]]; then baseline=$2; else root=$2; fi
       shift
       ;;
@@ -117,6 +118,7 @@ while (($#)); do
       ;;
     -*) die "unknown option: $1" "run with --help for usage" ;;
     *)
+      [[ -n $1 ]] || die "BUILD_DIR is empty"
       [[ -z $build_arg ]] || die "more than one BUILD_DIR: $build_arg, $1"
       build_arg=$1
       ;;
@@ -272,10 +274,10 @@ if [[ ${PRE_COMMIT:-} == 1 && -n ${PRE_COMMIT_REMOTE_NAME:-} ]]; then
     die "the pushed commit $pushed is not HEAD, which is what this check analyzes" \
       "check out the branch you push, and push one branch at a time"
   # Spelled out so that status.showUntrackedFiles and the submodule settings
-  # cannot hide a change, and ignored files under source/ and include/ count
+  # cannot hide a change, untracked files inside a submodule aside, and ignored files under source/ and include/ count
   # too, since the analysis reads every file there but editor and Finder files.
   # Each runs on its own, so that neither one's failure can pass for a clean tree.
-  status_out=$(git -C "$root" status --porcelain --untracked-files=all --ignore-submodules=none) ||
+  status_out=$(git -C "$root" status --porcelain --untracked-files=all --ignore-submodules=untracked) ||
     die "git status failed, so whether the working tree is HEAD cannot be checked"
   ignored_out=$(git -C "$root" ls-files --others --ignored --exclude-standard -- source include) ||
     die "git ls-files failed, so whether the working tree is HEAD cannot be checked"
@@ -373,7 +375,7 @@ index($1, p) == 1 {
   n = shell_words($2, t)
   opts = ""
   for (i = 1; i <= n; i++) {
-    if (t[i] ~ /^-[DU]./ || t[i] ~ /^-std=/) opts = opts " " word(t[i])
+    if (t[i] ~ /^-[DU]./ || t[i] ~ /^-std=/ || t[i] ~ /^-include./ || t[i] ~ /^-imacros./) opts = opts " " word(t[i])
     else if ((t[i] == "-D" || t[i] == "-U" || t[i] == "-include" || t[i] == "-imacros") && i < n) { opts = opts " " t[i] " " word(t[i + 1]); i++ }
   }
   sub(/^ /, "", opts)
@@ -403,7 +405,7 @@ fi
 # Every file, whatever its extension, since clang-tidy reads any file a source
 # includes, except editor and Finder files, which no source includes. The
 # patterns are drop_editor_files's.
-find "$root/source" "$root/include" -type f \
+find -L "$root/source" "$root/include" -type f \
   ! -name '*~' ! -name '*.swp' ! -name '*.swo' ! -name '#*#' ! -name '.#*' ! -name .DS_Store \
   -exec env LC_ALL=C awk \
   "${norm_vars[@]}" \
@@ -446,6 +448,8 @@ FNR == 1 { end_file(); file = norm(FILENAME); depth = 0 }
     # Code is what remains once leading block comments are set aside, unless a
     # line comment starts there, which makes the rest comment too.
     code = before
+    # A */ before any /* closes a comment begun on an earlier line.
+    if ((c = index(code, "*/")) > 0 && ((o = index(code, "/*")) == 0 || o > c)) code = substr(code, c + 2)
     while (sub(/^[ \t]*\/\*([^*]|\*+[^*\/])*\*+\//, "", code)) {}
     # A /* still left there is unclosed, so the directive sits inside it.
     if (code ~ /^[ \t]*$/ || code ~ /^[ \t]*\/[\/*]/) { bad("NOLINT must follow code on its line; put NOLINTNEXTLINE above the code instead"); next }
