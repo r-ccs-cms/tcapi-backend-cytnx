@@ -379,7 +379,11 @@ cmake_command=$(cache_value CMAKE_COMMAND)
 # EXPORT_COMPILE_COMMANDS off; removing it first keeps a stale one from being
 # read as current.
 rm -f "$build/compile_commands.json"
-if ! "$cmake_command" "$build" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON >"$work/cmake.log" 2>&1; then
+# The macOS Homebrew toolchain runs `brew --prefix` on every configure, and a
+# GUI client's PATH lacks Homebrew; the directory of a Homebrew CMake holds brew.
+cmake_path=$PATH
+[[ $cmake_command != /* ]] || cmake_path=$(dirname -- "$cmake_command"):$PATH
+if ! PATH=$cmake_path "$cmake_command" "$build" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON >"$work/cmake.log" 2>&1; then
   cat "$work/cmake.log" >&2
   die "re-running CMake on $build failed"
 fi
