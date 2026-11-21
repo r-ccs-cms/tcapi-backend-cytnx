@@ -38,7 +38,7 @@ scripts/tidy-count.sh --update   # rewrite .clang-tidy-baseline
 
 When your change fixes or adds warnings, run `--update` and commit `.clang-tidy-baseline` with the change. In the pull request description, explain every entry whose count rises.
 
-The pre-push hook analyzes your working tree, so it fails unless the commit you push is `HEAD` and `git status` shows nothing pre-commit leaves in place: a staged change, an untracked file, an ignored file under `source/` or `include/`, or a modified submodule fails it, whatever your git configuration hides, while pre-commit sets unstaged changes to tracked files aside first. It sees one branch per push. Push one branch at a time from a clean checkout. To push without the check, run `SKIP=clang-tidy-baseline git push`.
+The pre-push hook analyzes your working tree, so it fails unless the commit you push is `HEAD`, and it fails on a staged change, an untracked file, a modified submodule, or an ignored file under `source/` or `include/`, even when `status.showUntrackedFiles` or a submodule setting hides it from `git status`. pre-commit sets unstaged changes to tracked files aside first, so those do not fail it. It does not see a change git is told to ignore, such as one under `git update-index --skip-worktree`. It sees one branch per push. Push one branch at a time from a clean checkout. To push without the check, run `SKIP=clang-tidy-baseline git push`.
 
 ### Warnings that are not fixed
 

@@ -57,8 +57,10 @@
 # checks.
 #
 # Run by pre-commit at pre-push, the script also requires that the pushed
-# commit is HEAD and that the working tree has no change pre-commit leaves in
-# place, so that what it analyzes is what is pushed.
+# commit is HEAD, that `git status` lists no change pre-commit leaves in place
+# when told to show every untracked file and submodule change, and that no
+# ignored file lies under DIR/source or DIR/include. Changes git is told to
+# ignore, such as with update-index --skip-worktree, are not seen.
 
 set -euo pipefail
 
@@ -72,6 +74,12 @@ die() {
 # Prints the absolute path of the directory $1.
 abspath() {
   (CDPATH='' cd -- "$1" && pwd)
+}
+
+# Prints the value of the entry $1 in BUILD_DIR's CMakeCache.txt, a line of
+# the form NAME:TYPE=VALUE whose VALUE may itself contain `=`.
+cache_value() {
+  awk -v name="$1:" 'index($0, name) == 1 { sub(/^[^=]*=/, ""); print; exit }' "$build/CMakeCache.txt"
 }
 
 # Prints the physical path of the directory $1, symbolic links resolved.
@@ -128,7 +136,7 @@ build=$(abspath "$build_arg")
 
 tidy=${CLANG_TIDY:-}
 if [[ -z $tidy ]]; then
-  tidy=$(awk -F= '/^TCAPI_CLANG_TIDY:FILEPATH=/ { print $2 }' "$build/CMakeCache.txt")
+  tidy=$(cache_value TCAPI_CLANG_TIDY)
 fi
 tidy=${tidy:-clang-tidy}
 tidy_path=$(command -v "$tidy" || true)
@@ -223,18 +231,19 @@ if [[ ${PRE_COMMIT:-} == 1 && -n ${PRE_COMMIT_REMOTE_NAME:-} ]]; then
   [[ $pushed == "$(git -C "$root" rev-parse HEAD)" ]] ||
     die "the pushed commit $pushed is not HEAD, which is what this check analyzes" \
       "check out the branch you push, and push one branch at a time"
-  # Spelled out so that no git configuration hides a change, and ignored
-  # files under source/ and include/ count too: the analysis reads them all.
+  # Spelled out so that status.showUntrackedFiles and the submodule settings
+  # cannot hide a change, and ignored files under source/ and include/ count
+  # too, since the analysis reads every file there.
   dirty=$(git -C "$root" status --porcelain --untracked-files=all --ignore-submodules=none
     git -C "$root" ls-files --others --ignored --exclude-standard -- source include | awk '{ print "!! " $0 }')
   [[ -z $dirty ]] ||
     die "the working tree differs from HEAD, which is what is pushed:" "$dirty" \
-      "commit, stash or remove these changes before pushing"
+      "commit or undo these changes, or move the listed files out of the tree, before pushing"
 fi
 
 # --- Configure, and check the compilation database ---------------------------
 
-home=$(awk -F= '/^CMAKE_HOME_DIRECTORY:INTERNAL=/ { print $2 }' "$build/CMakeCache.txt")
+home=$(cache_value CMAKE_HOME_DIRECTORY)
 [[ -n $home && $(physpath "$home") == "$(physpath "$root")" ]] ||
   die "$build was configured from ${home:-an unknown tree}, not from $root"
 # compile_commands.json and clang-tidy spell paths the way CMake was configured
@@ -242,12 +251,12 @@ home=$(awk -F= '/^CMAKE_HOME_DIRECTORY:INTERNAL=/ { print $2 }' "$build/CMakeCac
 # directories by another path, such as through a symbolic link, so match
 # against CMake's spelling from here on.
 root=$home
-cachedir=$(awk -F= '/^CMAKE_CACHEFILE_DIR:INTERNAL=/ { print $2 }' "$build/CMakeCache.txt")
+cachedir=$(cache_value CMAKE_CACHEFILE_DIR)
 [[ -n $cachedir && $(physpath "$cachedir") == "$(physpath "$build")" ]] && build=$cachedir
 norm_vars=(-v "build=$build/" -v "root=$root/")
 # The CMake that configured BUILD_DIR, which need not be on PATH, as in a hook
 # a GUI client runs. A preset's environment variables are not reapplied.
-cmake_command=$(awk -F= '/^CMAKE_COMMAND:INTERNAL=/ { print $2 }' "$build/CMakeCache.txt")
+cmake_command=$(cache_value CMAKE_COMMAND)
 [[ -x $cmake_command ]] || cmake_command=cmake
 if ! "$cmake_command" "$build" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON >"$work/cmake.log" 2>&1; then
   cat "$work/cmake.log" >&2
@@ -440,16 +449,24 @@ $1 != current {
 ' "$work/warnings.tsv" >"$work/warning.keys"
 
 # One `suppressed\t<source>\t<count>` line per source.
-awk "${norm_vars[@]}" -v sources="$work/db-sources" "$awk_lib"'
+awk "${norm_vars[@]}" -v sources="$work/db-sources" -v sq="'" "$awk_lib"'
+function ends_with(s, t) { return length(s) >= length(t) && substr(s, length(s) - length(t) + 1) == t }
+# shlex.quote: unchanged when every character is safe, else single-quoted with
+# each embedded quote written as quote, double-quoted quote, quote.
+function shell_quote(s,    q) {
+  if (s !~ /[^A-Za-z0-9_@%+=:,.\/-]/) return s
+  q = s
+  gsub(sq, sq "\"" sq "\"" sq, q)
+  return sq q sq
+}
 BEGIN { while ((getline s < sources) > 0) { list[++n] = s; count[s] = 0 } }
 /^\[ *[0-9]+\/[0-9]+\]/ {
-  # The header ends with the source, quoted when its path has a space.
-  header = $0
-  sub(/'"'"'$/, "", header)
+  # The header ends with the source: as it is in LLVM 21, and quoted as
+  # Python'"'"'s shlex.quote does in LLVM 23.
   current = ""
   for (i = 1; i <= n; i++) {
     s = list[i]
-    if (length(header) >= length(s) && substr(header, length(header) - length(s) + 1) == s) current = s
+    if (ends_with($0, s) || ends_with($0, shell_quote(s))) current = s
   }
   # A header naming no known source would leave its count unattributed.
   if (current == "") { print "unmatched run-clang-tidy header: " $0 > "/dev/stderr"; failed = 1; exit 1 }
