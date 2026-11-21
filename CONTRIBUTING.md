@@ -46,7 +46,7 @@ The pre-push hook analyzes your working tree, so it fails unless the commit you 
 
 Fix a warning where you can. A warning that cannot be fixed is handled in one of three ways.
 
-**A warning that cannot be avoided at one site**, where disabling its check for the whole repository would be unreasonable, gets a directive on or above that site naming the check and saying why. These are the only accepted forms. A line of any file under `source/` or `include/`, whatever its extension, containing the text `NOLINT` in any other form fails the check (the editor and Finder files listed above aside), because clang-tidy honors that text anywhere on a line and in many spellings, some of which suppress every check:
+**A warning that cannot be avoided at one site**, where disabling its check for the whole repository would be unreasonable, gets a directive on or above that site naming the check and saying why. These are the only accepted forms. A line of any file under `source/` or `include/`, or of a header CMake generates from one of their templates, whatever its extension, containing the text `NOLINT` in any other form fails the check (the editor and Finder files listed above aside), because clang-tidy honors that text anywhere on a line and in many spellings, some of which suppress every check:
 
 ```cpp
 code; // NOLINT(<checks>): <reason>
@@ -67,7 +67,7 @@ code; // NOLINT(<checks>): <reason>
 
 ### The baseline's environment
 
-The baseline belongs to the clang-tidy version and the build configuration it records: its first lines hold the version and each source's `-D`, `-U`, `-std`, `-include` and `-imacros` options. `--check` compares nothing when the version differs, or when a source present in both the baseline and your build has different options, because the warnings then differ for reasons other than the code. A source added or removed is a change in the code, and shows as changed entries. A pull request that upgrades clang-tidy or changes the configuration runs `--update` and explains the change by itself.
+The baseline belongs to the clang-tidy version and the build configuration it records: its first lines hold the version and each source's `-D`, `-U`, `-std`, `-include`, `-include-pch` and `-imacros` options, as CMake's precompiled headers pass them included. `--check` compares nothing when the version differs, or when a source present in both the baseline and your build has different options, because the warnings then differ for reasons other than the code. A source added or removed is a change in the code, and shows as changed entries. A pull request that upgrades clang-tidy or changes the configuration runs `--update` and explains the change by itself.
 
 Without the baseline's environment, compare your change with its base commit in your own environment instead. This needs a build configured with GCC or Clang, since clang-tidy cannot read the compile options of the `intel-*` presets, and the `run-clang-tidy` of LLVM 21 or 23, the versions whose output format the script has been checked against.
 

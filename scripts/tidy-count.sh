@@ -40,7 +40,8 @@
 #   - a warning listed under several aliases ([a,b]) counts once.
 #
 # The baseline holds the clang-tidy version line, the configuration (each
-# source's -D, -U, -std, -include and -imacros options), and counts of these
+# source's -D, -U, -std, -include, -include-pch and -imacros options, -Xclang
+# forms included), and counts of these
 # keys:
 #   warning     file, checks, message and the text of the flagged line, so a
 #               change that only moves lines changes no warning key;
@@ -54,7 +55,8 @@
 # present on both sides, differ: the counts would then differ for reasons
 # other than the code.
 #
-# Every line of every file under DIR/source and DIR/include, editor and Finder
+# Every line of every file under DIR/source, DIR/include and the headers CMake
+# generates into BUILD_DIR/include, editor and Finder
 # files (*~, *.swp, *.swo, #*#, .#*, .DS_Store) aside, containing the text NOLINT must
 # be one directive in one of these forms, because clang-tidy honors that text
 # anywhere on a line, in many spellings:
@@ -446,9 +448,17 @@ function word(s) { return s ~ /[ \t]/ ? "\"" s "\"" : s }
   for (i = 1; i <= n; i++) {
     # clang-tidy reads the options in a response file, which this does not.
     if (t[i] ~ /^@/) { print "  " $1 ": " t[i] > "/dev/stderr"; exit 1 }
+    # -Xclang hands the next word to the compiler itself, as CMake'"'"'s
+    # target_precompile_headers() does with -Xclang -include -Xclang <header>
+    # and -Xclang -include-pch -Xclang <pch>.
+    if (t[i] == "-Xclang" && i + 3 <= n && t[i + 2] == "-Xclang" && (t[i + 1] == "-include" || t[i + 1] == "-include-pch")) {
+      opts = opts " " t[i + 1] " " word(rel(t[i + 3]))
+      i += 3
+    }
+    else if (t[i] == "-include-pch" && i < n) { opts = opts " " t[i] " " word(rel(t[i + 1])); i++ }
     # -include and -imacros joined to their file are recorded separated, so
     # that the file is a word of its own for rel().
-    if (match(t[i], /^-(include|imacros)./)) opts = opts " " substr(t[i], 1, RLENGTH - 1) " " word(rel(substr(t[i], RLENGTH)))
+    else if (t[i] !~ /^-include-pch/ && match(t[i], /^-(include|imacros)./)) opts = opts " " substr(t[i], 1, RLENGTH - 1) " " word(rel(substr(t[i], RLENGTH)))
     else if (t[i] ~ /^-[DU]./ || t[i] ~ /^-std=/) opts = opts " " word(rel(t[i]))
     else if ((t[i] == "-D" || t[i] == "-U" || t[i] == "-include" || t[i] == "-imacros") && i < n) { opts = opts " " t[i] " " word(rel(t[i + 1])); i++ }
   }
@@ -479,8 +489,12 @@ fi
 # violations to nolint.errors.
 # Every file, whatever its extension, since clang-tidy reads any file a source
 # includes, except editor and Finder files, which no source includes. The
-# patterns are drop_editor_files's.
-find -L "$root/source" "$root/include" -type f \
+# patterns are drop_editor_files's. The headers CMake generates into
+# BUILD_DIR/include from templates are scanned too, so that a directive in a
+# template is keyed by the code it covers once the template is filled in.
+scan_dirs=("$root/source" "$root/include")
+[[ ! -d $build/include ]] || scan_dirs+=("$build/include")
+find -L "${scan_dirs[@]}" -type f \
   ! -name '*~' ! -name '*.swp' ! -name '*.swo' ! -name '#*#' ! -name '.#*' ! -name .DS_Store \
   -exec env LC_ALL=C awk \
   "${norm_vars[@]}" \
