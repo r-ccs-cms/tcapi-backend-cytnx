@@ -16,7 +16,7 @@ cmake --preset brew-tidy
 pre-commit install
 ```
 
-`cmake --preset brew-tidy` configures `build-tidy`, which runs Homebrew LLVM's clang-tidy on the library's sources as they compile and exports the `compile_commands.json` the baseline check reads. `pre-commit install` installs two hooks: clang-format before each commit, and the baseline check before each push.
+`cmake --preset brew-tidy` configures `build-tidy`, which runs Homebrew LLVM's clang-tidy on the library's sources as they compile and exports the `compile_commands.json` the baseline check reads. `pre-commit install` needs pre-commit 3.2.0 or later, and installs two hooks: clang-format before each commit, and the baseline check before each push.
 
 `pre-commit install` refuses to install hooks when your git configuration sets `core.hooksPath`. Override the setting for that one command:
 
@@ -67,7 +67,7 @@ code; // NOLINT(<checks>): <reason>
 
 The baseline belongs to the clang-tidy version and the build configuration it records: its first lines hold the version and each source's `-D`, `-U`, `-std`, `-include` and `-imacros` options. `--check` compares nothing when the version differs, or when a source present in both the baseline and your build has different options, because the warnings then differ for reasons other than the code. A source added or removed is a change in the code, and shows as changed entries. A pull request that upgrades clang-tidy or changes the configuration runs `--update` and explains the change by itself.
 
-Without the baseline's environment, compare your change with its base commit in your own environment instead. This needs a build configured with GCC or Clang; clang-tidy cannot read the compile options of the `intel-*` presets.
+Without the baseline's environment, compare your change with its base commit in your own environment instead. This needs a build configured with GCC or Clang, since clang-tidy cannot read the compile options of the `intel-*` presets, and the `run-clang-tidy` of LLVM 21 or 23, the versions whose output format the script has been checked against.
 
 ```bash
 git worktree add ../base <base commit>

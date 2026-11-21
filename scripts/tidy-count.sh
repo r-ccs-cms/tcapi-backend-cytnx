@@ -71,7 +71,12 @@ die() {
 
 # Prints the absolute path of the directory $1.
 abspath() {
-  (cd "$1" && pwd)
+  (CDPATH='' cd -- "$1" && pwd)
+}
+
+# Prints the physical path of the directory $1, symbolic links resolved.
+physpath() {
+  (CDPATH='' cd -- "$1" 2>/dev/null && pwd -P)
 }
 
 usage() {
@@ -137,8 +142,8 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 # Awk helpers shared by the programs below: path normalization and trimming.
-# norm_vars gives norm() the two prefixes it rewrites.
-norm_vars=(-v "build=$build/" -v "root=$root/")
+# norm() takes the two prefixes it rewrites from norm_vars, set once the
+# database's spelling of DIR and BUILD_DIR is known.
 awk_lib='
 function norm(p) {
   if (index(p, build) == 1) return "<build>/" substr(p, length(build) + 1)
@@ -179,7 +184,8 @@ rank_lines() {
 fallback_hint() {
   cat >&2 <<EOF
 To compare in this environment, measure the change's base commit here too
-(GCC or Clang builds only; clang-tidy cannot read the intel-* toolchain's flags):
+(GCC or Clang builds only, since clang-tidy cannot read the intel-* toolchain's
+flags, with the run-clang-tidy of LLVM 21 or 23, whose output this script reads):
   git worktree add <dir> <base commit>
   git -C <dir> submodule update --init --recursive
   configure <dir> and this tree the same way, with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
@@ -206,8 +212,10 @@ if [[ ${PRE_COMMIT:-} == 1 ]]; then
   [[ -n ${PRE_COMMIT_TO_REF:-} ]] ||
     die "pre-commit did not say which commit is pushed, as for a push that reaches a root commit" \
       "run $0 --check by hand, then push with SKIP=clang-tidy-baseline"
-  [[ $(git -C "$root" rev-parse "$PRE_COMMIT_TO_REF") == "$(git -C "$root" rev-parse HEAD)" ]] ||
-    die "the pushed commit $PRE_COMMIT_TO_REF is not HEAD, which is what this check analyzes" \
+  # A pushed annotated tag arrives as the tag object; compare the commit.
+  pushed=$(git -C "$root" rev-parse "$PRE_COMMIT_TO_REF^{commit}")
+  [[ $pushed == "$(git -C "$root" rev-parse HEAD)" ]] ||
+    die "the pushed commit $pushed is not HEAD, which is what this check analyzes" \
       "check out the branch you push, and push one branch at a time"
   dirty=$(git -C "$root" status --porcelain)
   [[ -z $dirty ]] ||
@@ -218,8 +226,16 @@ fi
 # --- Configure, and check the compilation database ---------------------------
 
 home=$(awk -F= '/^CMAKE_HOME_DIRECTORY:INTERNAL=/ { print $2 }' "$build/CMakeCache.txt")
-[[ -n $home && $(cd "$home" && pwd -P) == "$(cd "$root" && pwd -P)" ]] ||
+[[ -n $home && $(physpath "$home") == "$(physpath "$root")" ]] ||
   die "$build was configured from ${home:-an unknown tree}, not from $root"
+# compile_commands.json and clang-tidy spell paths the way CMake was configured
+# with them, which differs from DIR and BUILD_DIR when CMake reached the same
+# directories by another path, such as through a symbolic link, so match
+# against CMake's spelling from here on.
+root=$home
+cachedir=$(awk -F= '/^CMAKE_CACHEFILE_DIR:INTERNAL=/ { print $2 }' "$build/CMakeCache.txt")
+[[ -n $cachedir && $(physpath "$cachedir") == "$(physpath "$build")" ]] && build=$cachedir
+norm_vars=(-v "build=$build/" -v "root=$root/")
 if ! cmake "$build" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON >"$work/cmake.log" 2>&1; then
   cat "$work/cmake.log" >&2
   die "re-running CMake on $build failed"
@@ -370,7 +386,9 @@ if ! (cd "$root" && "$runner" -clang-tidy-binary "$tidy_path" -p "$build" -use-c
   grep -E ': (error|fatal error):' "$work/raw" >&2 || tail -20 "$work/raw" >&2
   die "clang-tidy failed; the count is not valid"
 fi
-analyzed=$(awk '/^Running clang-tidy in .* files out of/ { for (i = 1; i <= NF; i++) if ($i == "for") { print $(i + 1); exit } }' "$work/raw")
+# LLVM 21 prints `Running clang-tidy for M files out of N ...`, LLVM 23
+# `Running clang-tidy in T threads for M files out of N ...`.
+analyzed=$(awk '/^Running clang-tidy .*for [0-9]+ files out of/ { for (i = 1; i <= NF; i++) if ($i == "for") { print $(i + 1); exit } }' "$work/raw")
 [[ $analyzed == "$nsources" ]] ||
   die "run-clang-tidy analyzed ${analyzed:-no} files, but $nsources sources are in the database"
 
