@@ -31,6 +31,10 @@
 # clang-tidy on every TCAPI source in that database and normalizes the output:
 #   - a warning in a header is reported once per source that includes it, so
 #     warnings are deduplicated by location, check and message;
+#   - paths lose their . and dir/.. steps, and a relative one is read from
+#     BUILD_DIR, so one header reached by two spellings is one location; the
+#     script stops when a reported path names no file, or when the shortened
+#     one names another file, as past a symbolic link;
 #   - paths are made relative to DIR, and BUILD_DIR's own path is written as
 #     <build>, so generated headers do not depend on its name;
 #   - a warning listed under several aliases ([a,b]) counts once.
@@ -42,8 +46,8 @@
 #               change that only moves lines changes no warning key;
 #   nolint      file, the directive's line and the line it covers, or for a
 #               NOLINTBEGIN block a checksum of the lines up to its NOLINTEND,
-#               which changes when those lines are edited, reordered, or moved
-#               into or out of the block;
+#               which changes, short of a rare collision, when those lines are
+#               edited, reordered, or moved into or out of the block;
 #   suppressed  each source's count of diagnostics suppressed by NOLINT, which
 #               changes when an existing directive starts hiding a new one.
 # --check compares nothing when the version, or the options of a source
@@ -366,7 +370,7 @@ if ! "$cmake_command" "$build" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON >"$work/cmake.
 fi
 [[ -f $build/compile_commands.json ]] || die "$build/compile_commands.json was not written"
 
-# One `<file>\t<command>` line per entry of the database.
+# One `<file>\t<command>\t<directory>` line per entry of the database.
 awk '
 function value(line) {
   sub(/^[ \t]*"[a-z]+": "/, "", line)
@@ -375,9 +379,17 @@ function value(line) {
   gsub(/\\\\/, "\\", line)
   return line
 }
+/^[ \t]*"directory": "/ { dir = value($0) }
 /^[ \t]*"command": "/ { cmd = value($0) }
-/^[ \t]*"file": "/ { print value($0) "\t" cmd }
+/^[ \t]*"file": "/ { print value($0) "\t" cmd "\t" dir }
 ' "$build/compile_commands.json" >"$work/db.tsv"
+
+# clang-tidy runs each command in its directory and reports a relative path
+# from there; the warning parser reads such paths from BUILD_DIR.
+while IFS= read -r dir; do
+  [[ $dir -ef $build ]] ||
+    die "a TCAPI source compiles in $dir, not in $build, where this script reads relative warning paths from"
+done < <(awk -F'\t' -v p="$root/source/" 'index($1, p) == 1 { print $3 }' "$work/db.tsv" | LC_ALL=C sort -u)
 
 awk -F'\t' -v p="$root/source/" 'index($1, p) == 1 { print $1 }' "$work/db.tsv" |
   LC_ALL=C sort -u >"$work/db-sources"
@@ -464,10 +476,19 @@ function end_file() {
   if (pending != "") { print pending "\t-" >> keys; pending = "" }
   for (; depth > 0; depth--) print file ":" open_line[depth] ": NOLINTBEGIN(" open_checks[depth] ") is never closed" >> errors
 }
-function hash_line(s,    i) {
+# Two polynomial hashes with unrelated bases and prime moduli: changes that
+# offset each other in one, as a +1 and a -1 one place apart do with a small
+# base, rarely do in the other, though the pair can still, rarely, collide.
+# Each stays below 2^53, where awk counts exactly.
+function hash_line(s,    i, c) {
   for (d = 1; d <= depth; d++) {
-    for (i = 1; i <= length(s); i++) h[d] = (h[d] * 31 + ord[substr(s, i, 1)]) % 2147483629
-    h[d] = (h[d] * 31 + 10) % 2147483629
+    for (i = 1; i <= length(s); i++) {
+      c = ord[substr(s, i, 1)]
+      h[d] = (h[d] * 257 + c) % 2147483647
+      g[d] = (g[d] * 65599 + c) % 2147483629
+    }
+    h[d] = (h[d] * 257 + 10) % 2147483647
+    g[d] = (g[d] * 65599 + 10) % 2147483629
   }
 }
 FNR == 1 { end_file(); file = norm(FILENAME); depth = 0 }
@@ -511,7 +532,7 @@ FNR == 1 { end_file(); file = norm(FILENAME); depth = 0 }
     if (rest != "") { bad("NOLINTEND takes no reason"); next }
     if (depth == 0) { bad("NOLINTEND(" list ") closes no NOLINTBEGIN"); next }
     if (open_checks[depth] != list) { bad("NOLINTEND(" list ") closes NOLINTBEGIN(" open_checks[depth] ") from line " open_line[depth]); next }
-    print open_key[depth] "\t#" h[depth] >> keys
+    print open_key[depth] "\t#" h[depth] "-" g[depth] >> keys
     depth--
     hash_line(line)
     next
@@ -528,7 +549,7 @@ FNR == 1 { end_file(); file = norm(FILENAME); depth = 0 }
     open_checks[depth] = list
     open_line[depth] = FNR
     open_key[depth] = key
-    h[depth] = 0
+    h[depth] = g[depth] = 0
   }
 }
 END { end_file() }
@@ -572,7 +593,7 @@ analyzed=$(awk '/^Running clang-tidy .*for [0-9]+ files out of/ { for (i = 1; i 
 # whose lines hold no such list stops the script, since its checks cannot be
 # told; a message line that itself ends in such a list, as in "see [foo-bar]",
 # is taken for it only when no later line ends in one.
-awk "$awk_lib"'
+awk -v cwd="$build" -v paths="$work/paths.tsv" "$awk_lib"'
 BEGIN {
   at = ":[0-9]+:[0-9]+: "
   warning = at "warning: "
@@ -603,9 +624,13 @@ function canon(p,    n, part, k, stack, i, out) {
   for (i = 2; i <= k; i++) out = out "/" stack[i]
   return out
 }
-function emit(line,    path, pos, lc, rest, checks, msg) {
+function emit(line,    orig, path, pos, lc, rest, checks, msg) {
   match(line, warning)
-  path = canon(substr(line, 1, RSTART - 1))
+  # A relative path, as -I../include gives, is relative to the directory the
+  # command runs in, BUILD_DIR for every TCAPI source (checked above).
+  orig = substr(line, 1, RSTART - 1)
+  path = canon(orig ~ /^\// ? orig : cwd "/" orig)
+  print orig "\t" path > paths
   pos = substr(line, RSTART + 1, RLENGTH - 1)
   sub(/: warning: $/, "", pos)
   split(pos, lc, ":")
@@ -626,7 +651,9 @@ function finish() {
   emit(best)
   pending = best = ""
 }
-$0 ~ (at "(warning|error|fatal error|note|remark): ") || /^ *[0-9]* \| / || progress($0) { finish() }
+# An excerpt line is source text, which can itself read like a diagnostic.
+/^ *[0-9]* \| / { finish(); next }
+$0 ~ (at "(warning|error|fatal error|note|remark): ") || progress($0) { finish() }
 pending != "" {
   pending = pending " " $0
   if (has_checks($0)) best = pending
@@ -641,6 +668,17 @@ END {
   finish()
 }' "$work/raw" | LC_ALL=C sort -u >"$work/warnings.tsv" ||
   die "the warning above has no [checks] list, so it cannot be counted"
+
+# A warning is keyed by the text of its line, read from its file. A reported
+# path can name no file, and dropping a dir/.. step reaches another file when
+# dir is a symbolic link; either would key it by the wrong text or none.
+touch "$work/paths.tsv"
+while IFS=$'\t' read -r reported path; do
+  (CDPATH='' cd -- "$build" && [[ -f $reported ]]) ||
+    die "clang-tidy reported a warning in $reported, which is not a file seen from $build"
+  (CDPATH='' cd -- "$build" && [[ $reported -ef $path ]]) ||
+    die "clang-tidy reported a warning in $reported, which this script reads as $path, another file, as past a symbolic link"
+done < <(LC_ALL=C sort -u "$work/paths.tsv")
 
 out="$build/clang-tidy-warnings.txt"
 awk -F'\t' "${norm_vars[@]}" "$awk_lib"'
