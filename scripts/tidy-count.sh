@@ -55,8 +55,8 @@
 #   // NOLINTBEGIN(<checks>): <reason>
 #   // NOLINTEND(<checks>)
 # NOLINT follows the code it applies to; the other three stand alone on their
-# line. <checks> is a comma-separated list of check names (letters, digits, `.`, `_`
-# and `-`) without spaces or `*`, <reason> starts with a letter, and each
+# line. <checks> is a comma-separated list of check names (letters, digits, `.`,
+# `_`, `-`, `+` and `#`) without spaces or `*`, <reason> starts with a letter, and each
 # NOLINTEND closes the innermost open NOLINTBEGIN, which must name the same
 # checks.
 #
@@ -86,11 +86,6 @@ abspath() {
 # the form NAME:TYPE=VALUE whose VALUE may itself contain `=`.
 cache_value() {
   awk -v name="$1:" 'index($0, name) == 1 { sub(/^[^=]*=/, ""); print; exit }' "$build/CMakeCache.txt"
-}
-
-# Prints the physical path of the directory $1, symbolic links resolved.
-physpath() {
-  (CDPATH='' cd -- "$1" 2>/dev/null && pwd -P)
 }
 
 usage() {
@@ -125,6 +120,10 @@ while (($#)); do
   esac
   shift
 done
+# The --root and BUILD_DIR given, repeated in the --update a message suggests.
+rerun=
+[[ -z $root ]] || rerun+=" --root $(printf %q "$root")"
+[[ -z $build_arg ]] || rerun+=" $(printf %q "$build_arg")"
 
 script_repo=$(abspath "$(dirname "$0")/..")
 if [[ -n $root ]]; then
@@ -163,8 +162,8 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 # Awk helpers shared by the programs below: path normalization and trimming.
-# norm() takes the two prefixes it rewrites from norm_vars, set once the
-# database's spelling of DIR and BUILD_DIR is known.
+# norm() and rel() take the two prefixes they rewrite from norm_vars, set once
+# the database's spelling of DIR and BUILD_DIR is known.
 awk_lib='
 function norm(p) {
   if (index(p, build) == 1) return "<build>/" substr(p, length(build) + 1)
@@ -175,6 +174,11 @@ function norm(p) {
 # ends in a tab that an editor or a patch tool could strip.
 function or_dash(s) {
   return s == "" ? "-" : s
+}
+# Writes every BUILD_DIR/ and DIR/ in s, wherever it occurs, as <build>/ and
+# <root>/, so that a path inside an option such as -DP=DIR/inc is rewritten too.
+function rel(s) {
+  return replace_all(replace_all(s, build, "<build>/"), root, "<root>/")
 }
 function trim(s) {
   sub(/\r$/, "", s)
@@ -248,12 +252,12 @@ EOF
 if [[ $mode == check ]]; then
   if [[ ! -f $baseline ]]; then
     if [[ $baseline == "$default_baseline" ]]; then
-      die "baseline $baseline not found" "write it with: $0 --update"
+      die "baseline $baseline not found" "write it with: $0 --update$rerun"
     fi
     die "baseline $baseline not found" \
       "write it from the base commit with: $0 --update --baseline $baseline --root <base worktree> <its build directory>"
   fi
-  base_version=$(awk -F'\t' '$1 == "version" { print $2; exit }' "$baseline")
+  base_version=$(awk -F'\t' '$1 == "version" { print $2; exit }' <"$baseline")
   if [[ $base_version != "$version" ]]; then
     printf 'error: clang-tidy version differs from the baseline; nothing was compared\n' >&2
     printf '  baseline: %s\n  running:  %s\n' "$base_version" "$version" >&2
@@ -303,7 +307,7 @@ fi
 # --- Configure, and check the compilation database ---------------------------
 
 home=$(cache_value CMAKE_HOME_DIRECTORY)
-[[ -n $home && $(physpath "$home") == "$(physpath "$root")" ]] ||
+[[ -n $home && $home -ef $root ]] ||
   die "$build was configured from ${home:-an unknown tree}, not from $root"
 # compile_commands.json and clang-tidy spell paths the way CMake was configured
 # with them, which differs from DIR and BUILD_DIR when CMake reached the same
@@ -311,7 +315,7 @@ home=$(cache_value CMAKE_HOME_DIRECTORY)
 # against CMake's spelling from here on.
 root=$home
 cachedir=$(cache_value CMAKE_CACHEFILE_DIR)
-[[ -n $cachedir && $(physpath "$cachedir") == "$(physpath "$build")" ]] && build=$cachedir
+[[ -n $cachedir && $cachedir -ef $build ]] && build=$cachedir
 norm_vars=(-v "build=$build/" -v "root=$root/")
 # The CMake that configured BUILD_DIR, which need not be on PATH, as in a hook
 # a GUI client runs. A preset's environment variables are not reapplied.
@@ -375,15 +379,15 @@ index($1, p) == 1 {
   n = shell_words($2, t)
   opts = ""
   for (i = 1; i <= n; i++) {
-    if (t[i] ~ /^-[DU]./ || t[i] ~ /^-std=/ || t[i] ~ /^-include./ || t[i] ~ /^-imacros./) opts = opts " " word(t[i])
-    else if ((t[i] == "-D" || t[i] == "-U" || t[i] == "-include" || t[i] == "-imacros") && i < n) { opts = opts " " t[i] " " word(t[i + 1]); i++ }
+    if (t[i] ~ /^-[DU]./ || t[i] ~ /^-std=/ || t[i] ~ /^-include./ || t[i] ~ /^-imacros./) opts = opts " " word(rel(t[i]))
+    else if ((t[i] == "-D" || t[i] == "-U" || t[i] == "-include" || t[i] == "-imacros") && i < n) { opts = opts " " t[i] " " word(rel(t[i + 1])); i++ }
   }
   sub(/^ /, "", opts)
-  print "config\t" norm($1) "\t" or_dash(replace_all(replace_all(opts, build, "<build>/"), root, "<root>/"))
+  print "config\t" norm($1) "\t" or_dash(opts)
 }' "$work/db.tsv" | LC_ALL=C sort -u >"$work/config"
 
 if [[ $mode == check ]]; then
-  awk -F'\t' '$1 == "config"' "$baseline" | LC_ALL=C sort -u >"$work/base-config"
+  awk -F'\t' '$1 == "config"' <"$baseline" | LC_ALL=C sort -u >"$work/base-config"
   mismatch=$(awk -F'\t' '
     # A source compiled by several targets has several lines; compare them as
     # one set per source. Both files are sorted, so the sets concatenate alike.
@@ -413,7 +417,7 @@ find -L "$root/source" "$root/include" -type f \
   "$awk_lib"'
 BEGIN {
   for (i = 1; i < 256; i++) ord[sprintf("%c", i)] = i
-  directive = "// NOLINT(NEXTLINE|BEGIN|END)?\\([A-Za-z0-9_.-]+(,[A-Za-z0-9_.-]+)*\\)"
+  directive = "// NOLINT(NEXTLINE|BEGIN|END)?\\([A-Za-z0-9_.+#-]+(,[A-Za-z0-9_.+#-]+)*\\)"
 }
 function bad(msg) { print file ":" FNR ": " msg >> errors }
 function end_file() {
@@ -518,19 +522,58 @@ analyzed=$(awk '/^Running clang-tidy .*for [0-9]+ files out of/ { for (i = 1; i 
   die "run-clang-tidy analyzed ${analyzed:-no} files, but $nsources sources are in the database"
 
 # One `<path>\t<line>\t<column>\t<checks>\t<message>` line per distinct warning.
+# A message can span lines, as a [[deprecated("...\n...")]] text does; its
+# lines are joined with spaces until one ends with what reads as the [checks]
+# list, a bracketed word with no space. A warning still without one when its
+# source excerpt, the next diagnostic or the output's end comes stops the
+# script, since its checks cannot be told. A message line that itself ends in
+# such a word, as in "use bar [v2]", is taken for the list; clang omits the
+# excerpt of some warnings, so the excerpt cannot mark where a message ends.
 awk '
-match($0, /:[0-9]+:[0-9]+: warning: /) {
-  path = substr($0, 1, RSTART - 1)
-  pos = substr($0, RSTART + 1, RLENGTH - 1)
+BEGIN {
+  at = ":[0-9]+:[0-9]+: "
+  warning = at "warning: "
+}
+# Check names hold no space or `]`, and clang-diagnostic ones can hold `+` and
+# `#`, as in [clang-diagnostic-c++98-compat].
+function has_checks(s) {
+  return match(s, / \[[^] ]+\]$/)
+}
+function emit(line,    path, pos, lc, rest, checks, msg) {
+  match(line, warning)
+  path = substr(line, 1, RSTART - 1)
+  pos = substr(line, RSTART + 1, RLENGTH - 1)
   sub(/: warning: $/, "", pos)
   split(pos, lc, ":")
-  rest = substr($0, RSTART + RLENGTH)
-  if (!match(rest, / \[[^]]+\]$/)) next
+  rest = substr(line, RSTART + RLENGTH)
+  has_checks(rest)
   checks = substr(rest, RSTART + 2, RLENGTH - 3)
   msg = substr(rest, 1, RSTART - 1)
   gsub(/\t/, " ", msg)
   print path "\t" lc[1] "\t" lc[2] "\t" checks "\t" msg
-}' "$work/raw" | LC_ALL=C sort -u >"$work/warnings.tsv"
+}
+function dangling() {
+  print "  " pending > "/dev/stderr"
+  failed = 1
+  exit 1
+}
+# The next diagnostic, or the source excerpt under this one (lines like
+# "   12 | code" and "      | ^"), ends a message.
+pending != "" && (/(^|: )(warning|error|fatal error|note|remark): / || /^ *[0-9]* \| /) { dangling() }
+pending != "" {
+  pending = pending " " $0
+  if (has_checks(pending)) { emit(pending); pending = "" }
+  next
+}
+$0 ~ warning {
+  if (has_checks($0)) emit($0)
+  else pending = $0
+}
+END {
+  if (failed) exit 1
+  if (pending != "") dangling()
+}' "$work/raw" | LC_ALL=C sort -u >"$work/warnings.tsv" ||
+  die "the warning above has no [checks] list, so it cannot be counted"
 
 out="$build/clang-tidy-warnings.txt"
 awk -F'\t' "${norm_vars[@]}" "$awk_lib"'
@@ -621,7 +664,7 @@ case $mode in
     echo "wrote $baseline: $nwarnings warnings, $ndirectives NOLINT directives, clang-tidy: $version"
     ;;
   check)
-    awk -F'\t' '$1 ~ /^[0-9]+$/' "$baseline" >"$work/base-keys"
+    awk -F'\t' '$1 ~ /^[0-9]+$/' <"$baseline" >"$work/base-keys"
     diff=$(awk -F'\t' '
       { c = $1; k = substr($0, length($1) + 2) }
       NR == FNR { base[k] = c; keys[k] = 1; next }
@@ -631,7 +674,7 @@ case $mode in
     if [[ -n $diff ]]; then
       printf 'error: clang-tidy results differ from %s:\n%s\n' "$baseline" "$diff" >&2
       if [[ $baseline == "$default_baseline" ]]; then
-        printf 'If the change is intended, run %s --update and commit the baseline;\n' "$0" >&2
+        printf 'If the change is intended, run %s --update%s and commit the baseline;\n' "$0" "$rerun" >&2
         printf 'the pull request explains every key whose count rises.\n' >&2
       else
         printf 'This compared with %s, not the repository'"'"'s baseline. Explain every key\n' "$baseline" >&2
