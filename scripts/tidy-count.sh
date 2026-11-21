@@ -21,7 +21,8 @@
 #
 # The build log is not a usable count: an incremental build re-runs clang-tidy
 # only on the sources it recompiles, and the compiler's own -W warnings are
-# mixed into it. This script instead re-runs CMake on BUILD_DIR, so that its
+# mixed into it. This script instead re-runs CMake on BUILD_DIR, setting
+# CMAKE_EXPORT_COMPILE_COMMANDS=ON in its cache, so that its
 # compile_commands.json and generated headers match the sources, then runs
 # clang-tidy on every TCAPI source in that database and normalizes the output:
 #   - a warning in a header is reported once per source that includes it, so
@@ -172,6 +173,7 @@ function or_dash(s) {
   return s == "" ? "-" : s
 }
 function trim(s) {
+  sub(/\r$/, "", s)
   gsub(/\t/, " ", s)
   sub(/^ +/, "", s)
   sub(/ +$/, "", s)
@@ -198,7 +200,8 @@ drop_editor_files() {
       if (p !~ /^(\?\?|!!) /) { print; next }
       p = substr(p, 4)
     }
-    sub(/"$/, "", p)
+    # git quotes a path holding special characters as a whole.
+    if (p ~ /^".*"$/) p = substr(p, 2, length(p) - 2)
     n = split(p, parts, "/")
     b = parts[n]
     if (b ~ /~$/ || b ~ /\.sw[po]$/ || b ~ /^#.*#$/ || b ~ /^\.#/ || b == ".DS_Store") next
@@ -338,7 +341,7 @@ index($1, p) == 1 {
     else if ((t[i] == "-D" || t[i] == "-U" || t[i] == "-include" || t[i] == "-imacros") && i < n) { opts = opts " " t[i] " " t[i + 1]; i++ }
   }
   sub(/^ /, "", opts)
-  print "config\t" norm($1) "\t" replace_all(replace_all(opts, build, "<build>/"), root, "<root>/")
+  print "config\t" norm($1) "\t" or_dash(replace_all(replace_all(opts, build, "<build>/"), root, "<root>/"))
 }' "$work/db.tsv" | LC_ALL=C sort -u >"$work/config"
 
 if [[ $mode == check ]]; then
@@ -388,6 +391,8 @@ function hash_line(s,    i) {
 }
 FNR == 1 { end_file(); file = norm(FILENAME); depth = 0 }
 {
+  # A CRLF line ending would read as text after the directive.
+  sub(/\r$/, "")
   if (pending != "") { print pending "\t" or_dash(trim($0)) >> keys; pending = "" }
   line = $0
   if (index(line, "NOLINT") == 0) { hash_line(line); next }
@@ -402,7 +407,11 @@ FNR == 1 { end_file(); file = norm(FILENAME); depth = 0 }
   rest = substr(line, RSTART + RLENGTH)
   if (before ~ /\/$/) { bad("the directive must follow // exactly, not ///"); next }
   if (text ~ /^\/\/ NOLINT\(/) {
-    if (before ~ /^[ \t]*$/) { bad("NOLINT must follow code on its line; put NOLINTNEXTLINE above the code instead"); next }
+    # Code is what remains once leading block comments are set aside, unless a
+    # line comment starts there, which makes the rest comment too.
+    code = before
+    while (sub(/^[ \t]*\/\*([^*]|\*+[^*\/])*\*+\//, "", code)) {}
+    if (code ~ /^[ \t]*$/ || code ~ /^[ \t]*\/\//) { bad("NOLINT must follow code on its line; put NOLINTNEXTLINE above the code instead"); next }
   } else if (before !~ /^[ \t]*$/) {
     bad("NOLINTNEXTLINE, NOLINTBEGIN and NOLINTEND must stand alone on their line")
     next
