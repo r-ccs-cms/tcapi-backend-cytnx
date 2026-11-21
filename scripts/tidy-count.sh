@@ -107,7 +107,7 @@ while (($#)); do
       mode=${1#--}
       ;;
     --baseline | --root)
-      (($# >= 2)) || die "$1 needs an argument"
+      (($# >= 2)) && [[ $2 != -* ]] || die "$1 needs a path, not ${2:-nothing}"
       if [[ $1 == --baseline ]]; then baseline=$2; else root=$2; fi
       shift
       ;;
@@ -131,7 +131,9 @@ if [[ -n $root ]]; then
 else
   root=$script_repo
 fi
-baseline=${baseline:-$script_repo/.clang-tidy-baseline}
+default_baseline=$script_repo/.clang-tidy-baseline
+baseline=${baseline:-$default_baseline}
+[[ ! -d $baseline ]] || die "baseline $baseline is a directory; give the path of a file"
 build_arg=${build_arg:-$root/build-tidy}
 [[ -d $build_arg ]] ||
   die "build directory $build_arg not found" "configure it with: cmake --preset brew-tidy"
@@ -242,7 +244,13 @@ EOF
 # --- Checks that need no analysis --------------------------------------------
 
 if [[ $mode == check ]]; then
-  [[ -f $baseline ]] || die "baseline $baseline not found" "write it with: $0 --update"
+  if [[ ! -f $baseline ]]; then
+    if [[ $baseline == "$default_baseline" ]]; then
+      die "baseline $baseline not found" "write it with: $0 --update"
+    fi
+    die "baseline $baseline not found" \
+      "write it from the base commit with: $0 --update --baseline $baseline --root <base worktree> <its build directory>"
+  fi
   base_version=$(awk -F'\t' '$1 == "version" { print $2; exit }' "$baseline")
   if [[ $base_version != "$version" ]]; then
     printf 'error: clang-tidy version differs from the baseline; nothing was compared\n' >&2
@@ -266,10 +274,15 @@ if [[ ${PRE_COMMIT:-} == 1 && -n ${PRE_COMMIT_REMOTE_NAME:-} ]]; then
   # Spelled out so that status.showUntrackedFiles and the submodule settings
   # cannot hide a change, and ignored files under source/ and include/ count
   # too, since the analysis reads every file there but editor and Finder files.
+  # Each runs on its own, so that neither one's failure can pass for a clean tree.
+  status_out=$(git -C "$root" status --porcelain --untracked-files=all --ignore-submodules=none) ||
+    die "git status failed, so whether the working tree is HEAD cannot be checked"
+  ignored_out=$(git -C "$root" ls-files --others --ignored --exclude-standard -- source include) ||
+    die "git ls-files failed, so whether the working tree is HEAD cannot be checked"
   dirty=$({
-    git -C "$root" status --porcelain --untracked-files=all --ignore-submodules=none
-    git -C "$root" ls-files --others --ignored --exclude-standard -- source include | awk '{ print "!! " $0 }'
-  } | drop_editor_files status)
+    printf '%s\n' "$status_out"
+    printf '%s\n' "$ignored_out" | awk 'length { print "!! " $0 }'
+  } | drop_editor_files status | awk 'length')
   [[ -z $dirty ]] ||
     die "the working tree differs from HEAD, which is what is pushed:" "$dirty" \
       "commit or undo these changes, or move the listed files out of the tree, before pushing"
@@ -333,12 +346,35 @@ nsources=$(count_lines "$work/db-sources")
 
 # One `config\t<source>\t<options>` line per source.
 awk -F'\t' "${norm_vars[@]}" -v p="$root/source/" "$awk_lib"'
+# Splits the shell command line s into words in w, as sh would: quotes group,
+# and a backslash escapes the next character outside single quotes.
+function shell_words(s, w,    n, i, c, cur, q, started) {
+  n = 0; cur = ""; q = ""; started = 0
+  for (i = 1; i <= length(s); i++) {
+    c = substr(s, i, 1)
+    if (q == "") {
+      if (c == " " || c == "\t") { if (started) { w[++n] = cur; cur = ""; started = 0 }; continue }
+      started = 1
+      if (c == "\"" || c == "'"'"'") { q = c; continue }
+      if (c == "\\" && i < length(s)) { i++; c = substr(s, i, 1) }
+      cur = cur c
+    } else if (c == q) q = ""
+    else {
+      if (q == "\"" && c == "\\" && i < length(s)) { i++; c = substr(s, i, 1) }
+      cur = cur c
+    }
+  }
+  if (started) w[++n] = cur
+  return n
+}
+# A word holding a space is written quoted, so that the words stay apart.
+function word(s) { return s ~ /[ \t]/ ? "\"" s "\"" : s }
 index($1, p) == 1 {
-  n = split($2, t, " ")
+  n = shell_words($2, t)
   opts = ""
   for (i = 1; i <= n; i++) {
-    if (t[i] ~ /^-[DU]./ || t[i] ~ /^-std=/) opts = opts " " t[i]
-    else if ((t[i] == "-D" || t[i] == "-U" || t[i] == "-include" || t[i] == "-imacros") && i < n) { opts = opts " " t[i] " " t[i + 1]; i++ }
+    if (t[i] ~ /^-[DU]./ || t[i] ~ /^-std=/) opts = opts " " word(t[i])
+    else if ((t[i] == "-D" || t[i] == "-U" || t[i] == "-include" || t[i] == "-imacros") && i < n) { opts = opts " " t[i] " " word(t[i + 1]); i++ }
   }
   sub(/^ /, "", opts)
   print "config\t" norm($1) "\t" or_dash(replace_all(replace_all(opts, build, "<build>/"), root, "<root>/"))
@@ -411,7 +447,8 @@ FNR == 1 { end_file(); file = norm(FILENAME); depth = 0 }
     # line comment starts there, which makes the rest comment too.
     code = before
     while (sub(/^[ \t]*\/\*([^*]|\*+[^*\/])*\*+\//, "", code)) {}
-    if (code ~ /^[ \t]*$/ || code ~ /^[ \t]*\/\//) { bad("NOLINT must follow code on its line; put NOLINTNEXTLINE above the code instead"); next }
+    # A /* still left there is unclosed, so the directive sits inside it.
+    if (code ~ /^[ \t]*$/ || code ~ /^[ \t]*\/[\/*]/) { bad("NOLINT must follow code on its line; put NOLINTNEXTLINE above the code instead"); next }
   } else if (before !~ /^[ \t]*$/) {
     bad("NOLINTNEXTLINE, NOLINTBEGIN and NOLINTEND must stand alone on their line")
     next
@@ -589,8 +626,14 @@ case $mode in
     ' "$work/base-keys" "$work/current" | LC_ALL=C sort -t "$(printf '\t')" -k2)
     if [[ -n $diff ]]; then
       printf 'error: clang-tidy results differ from %s:\n%s\n' "$baseline" "$diff" >&2
-      printf 'If the change is intended, run %s --update and commit the baseline;\n' "$0" >&2
-      printf 'the pull request explains every key whose count rises.\n' >&2
+      if [[ $baseline == "$default_baseline" ]]; then
+        printf 'If the change is intended, run %s --update and commit the baseline;\n' "$0" >&2
+        printf 'the pull request explains every key whose count rises.\n' >&2
+      else
+        printf 'This compared with %s, not the repository'"'"'s baseline. Explain every key\n' "$baseline" >&2
+        printf 'whose count rises in the pull request; someone with the baseline'"'"'s\n' >&2
+        printf 'environment updates .clang-tidy-baseline (see CONTRIBUTING.md).\n' >&2
+      fi
       exit 1
     fi
     echo "clang-tidy results match $baseline: $nwarnings warnings, $ndirectives NOLINT directives"
