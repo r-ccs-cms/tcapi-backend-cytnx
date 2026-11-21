@@ -38,7 +38,7 @@ scripts/tidy-count.sh --update   # rewrite .clang-tidy-baseline
 
 When your change fixes or adds warnings, run `--update` and commit `.clang-tidy-baseline` with the change. In the pull request description, explain every entry whose count rises.
 
-The pre-push hook analyzes your working tree, so it fails unless the commit you push is `HEAD` and `git status` shows nothing pre-commit leaves in place: a staged change, an untracked file or a modified submodule fails it, while pre-commit sets unstaged changes to tracked files aside first. It sees one branch per push. Push one branch at a time from a clean checkout. To push without the check, run `SKIP=clang-tidy-baseline git push`.
+The pre-push hook analyzes your working tree, so it fails unless the commit you push is `HEAD` and `git status` shows nothing pre-commit leaves in place: a staged change, an untracked file, an ignored file under `source/` or `include/`, or a modified submodule fails it, whatever your git configuration hides, while pre-commit sets unstaged changes to tracked files aside first. It sees one branch per push. Push one branch at a time from a clean checkout. To push without the check, run `SKIP=clang-tidy-baseline git push`.
 
 ### Warnings that are not fixed
 
@@ -81,4 +81,4 @@ Explain in the pull request what this shows. Someone with the baseline's environ
 
 ### Limits
 
-The check does not see a warning that replaces a fixed one with the same file, check, message and line text, nor one suppressed diagnostic replacing another under the same directives with every count unchanged. It does not record the versions of dependencies found through include paths, so a dependency upgrade can change the warnings; the check then fails, and the pull request that upgrades the dependency updates the baseline.
+The check does not see a warning that replaces a fixed one with the same file, check, message and line text, nor one suppressed diagnostic replacing another under the same directives with every count unchanged. It records only the compile options named above, not, for example, `-arch`, `-O` or `-f` options, nor the versions of dependencies found through include paths. A change in any of those can change the warnings; the check then fails, and the pull request that makes the change updates the baseline.

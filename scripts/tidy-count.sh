@@ -136,7 +136,11 @@ tidy_path=$(command -v "$tidy" || true)
 runner="$(dirname "$tidy_path")/run-clang-tidy"
 [[ -x $runner ]] || runner=$(command -v run-clang-tidy || true)
 [[ -n $runner ]] || die "run-clang-tidy not found" "install it with: brew install llvm"
-version=$("$tidy_path" --version | awk 'tolower($0) ~ /version/ { sub(/^[ \t]+/, ""); print; exit }')
+# Both run after a cd into DIR, so a path relative to here must not reach them.
+tidy_path="$(abspath "$(dirname "$tidy_path")")/$(basename "$tidy_path")"
+runner="$(abspath "$(dirname "$runner")")/$(basename "$runner")"
+version_out=$("$tidy_path" --version 2>&1) || die "cannot run $tidy_path --version:" "$version_out"
+version=$(printf '%s\n' "$version_out" | awk 'tolower($0) ~ /version/ { sub(/^[ \t]+/, ""); print; exit }')
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -208,7 +212,9 @@ if [[ $mode == check ]]; then
   fi
 fi
 
-if [[ ${PRE_COMMIT:-} == 1 ]]; then
+# pre-commit sets PRE_COMMIT for every run, and PRE_COMMIT_REMOTE_NAME only
+# when a push runs the hook.
+if [[ ${PRE_COMMIT:-} == 1 && -n ${PRE_COMMIT_REMOTE_NAME:-} ]]; then
   [[ -n ${PRE_COMMIT_TO_REF:-} ]] ||
     die "pre-commit did not say which commit is pushed, as for a push that reaches a root commit" \
       "run $0 --check by hand, then push with SKIP=clang-tidy-baseline"
@@ -217,7 +223,10 @@ if [[ ${PRE_COMMIT:-} == 1 ]]; then
   [[ $pushed == "$(git -C "$root" rev-parse HEAD)" ]] ||
     die "the pushed commit $pushed is not HEAD, which is what this check analyzes" \
       "check out the branch you push, and push one branch at a time"
-  dirty=$(git -C "$root" status --porcelain)
+  # Spelled out so that no git configuration hides a change, and ignored
+  # files under source/ and include/ count too: the analysis reads them all.
+  dirty=$(git -C "$root" status --porcelain --untracked-files=all --ignore-submodules=none
+    git -C "$root" ls-files --others --ignored --exclude-standard -- source include | awk '{ print "!! " $0 }')
   [[ -z $dirty ]] ||
     die "the working tree differs from HEAD, which is what is pushed:" "$dirty" \
       "commit, stash or remove these changes before pushing"
@@ -236,7 +245,11 @@ root=$home
 cachedir=$(awk -F= '/^CMAKE_CACHEFILE_DIR:INTERNAL=/ { print $2 }' "$build/CMakeCache.txt")
 [[ -n $cachedir && $(physpath "$cachedir") == "$(physpath "$build")" ]] && build=$cachedir
 norm_vars=(-v "build=$build/" -v "root=$root/")
-if ! cmake "$build" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON >"$work/cmake.log" 2>&1; then
+# The CMake that configured BUILD_DIR, which need not be on PATH, as in a hook
+# a GUI client runs. A preset's environment variables are not reapplied.
+cmake_command=$(awk -F= '/^CMAKE_COMMAND:INTERNAL=/ { print $2 }' "$build/CMakeCache.txt")
+[[ -x $cmake_command ]] || cmake_command=cmake
+if ! "$cmake_command" "$build" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON >"$work/cmake.log" 2>&1; then
   cat "$work/cmake.log" >&2
   die "re-running CMake on $build failed"
 fi
@@ -281,8 +294,11 @@ index($1, p) == 1 {
 if [[ $mode == check ]]; then
   awk -F'\t' '$1 == "config"' "$baseline" | LC_ALL=C sort -u >"$work/base-config"
   mismatch=$(awk -F'\t' '
-    NR == FNR { base[$2] = $3; next }
-    ($2 in base) && base[$2] != $3 { printf "  %s\n    baseline: %s\n    current:  %s\n", $2, base[$2], $3 }
+    # A source compiled by several targets has several lines; compare them as
+    # one set per source. Both files are sorted, so the sets concatenate alike.
+    NR == FNR { base[$2] = base[$2] "\n      " $3; next }
+    { cur[$2] = cur[$2] "\n      " $3 }
+    END { for (s in cur) if ((s in base) && base[s] != cur[s]) printf "  %s\n    baseline:%s\n    current:%s\n", s, base[s], cur[s] }
   ' "$work/base-config" "$work/config")
   if [[ -n $mismatch ]]; then
     printf 'error: compile options differ from the baseline; nothing was compared\n%s\n' "$mismatch" >&2
