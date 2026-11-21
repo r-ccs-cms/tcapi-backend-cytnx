@@ -23,7 +23,10 @@
 # only on the sources it recompiles, and the compiler's own -W warnings are
 # mixed into it. This script instead re-runs CMake on BUILD_DIR, setting
 # CMAKE_EXPORT_COMPILE_COMMANDS=ON in its cache, so that its
-# compile_commands.json and generated headers match the sources, then runs
+# compile_commands.json and generated headers match the sources (that keeps
+# the cache and reapplies no preset, so it first stops if DIR's
+# CMakePresets.json or CMakeUserPresets.json was written after BUILD_DIR's
+# last configure, until BUILD_DIR is configured again), then runs
 # clang-tidy on every TCAPI source in that database and normalizes the output:
 #   - a warning in a header is reported once per source that includes it, so
 #     warnings are deduplicated by location, check and message;
@@ -82,6 +85,13 @@ abspath() {
   (CDPATH='' cd -- "$1" && pwd)
 }
 
+# Prints the absolute path of the file $1, whose directory exists.
+abspath_file() {
+  local dir
+  dir=$(abspath "$(dirname -- "$1")") || return
+  printf '%s/%s\n' "$dir" "$(basename -- "$1")"
+}
+
 # Prints the value of the entry $1 in BUILD_DIR's CMakeCache.txt, a line of
 # the form NAME:TYPE=VALUE whose VALUE may itself contain `=`.
 cache_value() {
@@ -134,6 +144,13 @@ else
 fi
 default_baseline=$script_repo/.clang-tidy-baseline
 baseline=${baseline:-$default_baseline}
+# Whether FILE is the repository's baseline: the same file, or, while it does
+# not exist, the same path once made absolute.
+is_default=
+if [[ $baseline -ef $default_baseline ]] ||
+  { [[ -d $(dirname -- "$baseline") ]] && [[ $(abspath_file "$baseline") == "$default_baseline" ]]; }; then
+  is_default=1
+fi
 [[ ! -d $baseline ]] || die "baseline $baseline is a directory; give the path of a file"
 build_arg=${build_arg:-$root/build-tidy}
 [[ -d $build_arg ]] ||
@@ -153,8 +170,8 @@ runner="$(dirname "$tidy_path")/run-clang-tidy"
 [[ -x $runner ]] || runner=$(command -v run-clang-tidy || true)
 [[ -n $runner ]] || die "run-clang-tidy not found" "install it with: brew install llvm"
 # Both run after a cd into DIR, so a path relative to here must not reach them.
-tidy_path="$(abspath "$(dirname "$tidy_path")")/$(basename "$tidy_path")"
-runner="$(abspath "$(dirname "$runner")")/$(basename "$runner")"
+tidy_path=$(abspath_file "$tidy_path")
+runner=$(abspath_file "$runner")
 version_out=$("$tidy_path" --version 2>&1) || die "cannot run $tidy_path --version:" "$version_out"
 version=$(printf '%s\n' "$version_out" | awk 'tolower($0) ~ /version/ { sub(/^[ \t]+/, ""); print; exit }')
 
@@ -251,7 +268,7 @@ EOF
 
 if [[ $mode == check ]]; then
   if [[ ! -f $baseline ]]; then
-    if [[ $baseline == "$default_baseline" ]]; then
+    if [[ -n $is_default ]]; then
       die "baseline $baseline not found" "write it with: $0 --update$rerun"
     fi
     die "baseline $baseline not found" \
@@ -317,6 +334,22 @@ root=$home
 cachedir=$(cache_value CMAKE_CACHEFILE_DIR)
 [[ -n $cachedir && $cachedir -ef $build ]] && build=$cachedir
 norm_vars=(-v "build=$build/" -v "root=$root/")
+# Re-running CMake on BUILD_DIR keeps its cache and does not reapply a preset,
+# so a preset file changed since the last configure would go unapplied. Every
+# configure rewrites cmake.check_cache; stopping before the re-run below keeps
+# this check failing until BUILD_DIR is configured again. macOS's bash 3.2
+# compares the times to the second, so a write within the second of the
+# configure goes unseen there. Any configure clears
+# it, one that reapplies no preset included, such as a plain `cmake BUILD_DIR`
+# or a build that re-runs CMake after CMakeLists.txt changed.
+stamp=$build/CMakeFiles/cmake.check_cache
+[[ -f $stamp ]] || stamp=$build/CMakeCache.txt
+for presets in "$root/CMakePresets.json" "$root/CMakeUserPresets.json"; do
+  [[ ! $presets -nt $stamp ]] ||
+    die "$presets was written after $build was last configured" \
+      "configure it again, with its preset if it has one, as in: cmake --preset brew-tidy" \
+      "in a push with an unstaged change to it, commit or undo that change first"
+done
 # The CMake that configured BUILD_DIR, which need not be on PATH, as in a hook
 # a GUI client runs. A preset's environment variables are not reapplied.
 cmake_command=$(cache_value CMAKE_COMMAND)
@@ -524,20 +557,24 @@ analyzed=$(awk '/^Running clang-tidy .*for [0-9]+ files out of/ { for (i = 1; i 
 # One `<path>\t<line>\t<column>\t<checks>\t<message>` line per distinct warning.
 # A message can span lines, as a [[deprecated("...\n...")]] text does; its
 # lines are joined with spaces until one ends with what reads as the [checks]
-# list, a bracketed word with no space. A warning still without one when its
-# source excerpt, the next diagnostic or the output's end comes stops the
-# script, since its checks cannot be told. A message line that itself ends in
-# such a word, as in "use bar [v2]", is taken for the list; clang omits the
-# excerpt of some warnings, so the excerpt cannot mark where a message ends.
+# list (see has_checks). A warning still without one when its source excerpt,
+# the next diagnostic at a location or the output's end comes stops the
+# script, since its checks cannot be told; a line such as "error: ..." with no
+# location is read as part of the message. A message line that itself ends in
+# such a list, as in "see [foo-bar]", is taken for it. The excerpt cannot mark
+# where a message ends instead: clang omits it for some warnings, and
+# clang-tidy can print a "note: this fix will not be applied ..." line between
+# a message and it.
 awk '
 BEGIN {
   at = ":[0-9]+:[0-9]+: "
   warning = at "warning: "
 }
-# Check names hold no space or `]`, and clang-diagnostic ones can hold `+` and
-# `#`, as in [clang-diagnostic-c++98-compat].
+# A check name is <module>-<name>, so it holds a `-`, and no space, `,` or `]`;
+# clang-diagnostic ones can hold `+` and `#`, as in
+# [clang-diagnostic-c++98-compat].
 function has_checks(s) {
-  return match(s, / \[[^] ]+\]$/)
+  return match(s, / \[[^] ,]*-[^] ,]*(,[^] ,]*-[^] ,]*)*\]$/)
 }
 function emit(line,    path, pos, lc, rest, checks, msg) {
   match(line, warning)
@@ -557,9 +594,10 @@ function dangling() {
   failed = 1
   exit 1
 }
-# The next diagnostic, or the source excerpt under this one (lines like
-# "   12 | code" and "      | ^"), ends a message.
-pending != "" && (/(^|: )(warning|error|fatal error|note|remark): / || /^ *[0-9]* \| /) { dangling() }
+# The next diagnostic at a location, or the source excerpt under this one
+# (lines like "   12 | code" and "      | ^"), ends a message. A line opening
+# with "note: " does not, since a message line can read so.
+pending != "" && ($0 ~ (at "(warning|error|fatal error|note|remark): ") || /^ *[0-9]* \| /) { dangling() }
 pending != "" {
   pending = pending " " $0
   if (has_checks(pending)) { emit(pending); pending = "" }
@@ -673,7 +711,7 @@ case $mode in
     ' "$work/base-keys" "$work/current" | LC_ALL=C sort -t "$(printf '\t')" -k2)
     if [[ -n $diff ]]; then
       printf 'error: clang-tidy results differ from %s:\n%s\n' "$baseline" "$diff" >&2
-      if [[ $baseline == "$default_baseline" ]]; then
+      if [[ -n $is_default ]]; then
         printf 'If the change is intended, run %s --update%s and commit the baseline;\n' "$0" "$rerun" >&2
         printf 'the pull request explains every key whose count rises.\n' >&2
       else
