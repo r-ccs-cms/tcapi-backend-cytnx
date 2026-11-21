@@ -8,7 +8,7 @@
 #   (no mode)  print the counts
 #   --update   write the baseline FILE from the current warnings, refusing
 #              while a file under DIR/source or DIR/include other than an
-#              editor backup or swap file is not tracked by git
+#              editor or Finder file (see below) is not tracked by git
 #   --check    compare the current warnings with the baseline FILE; exit
 #              nonzero on any difference
 #
@@ -45,8 +45,8 @@
 # present on both sides, differ: the counts would then differ for reasons
 # other than the code.
 #
-# Every line of every file under DIR/source and DIR/include, editor backup and
-# swap files (*~, *.swp, *.swo, #*#, .#*) aside, containing the text NOLINT must
+# Every line of every file under DIR/source and DIR/include, editor and Finder
+# files (*~, *.swp, *.swo, #*#, .#*, .DS_Store) aside, containing the text NOLINT must
 # be one directive in one of these forms, because clang-tidy honors that text
 # anywhere on a line, in many spellings:
 #   // NOLINT(<checks>): <reason>
@@ -63,7 +63,7 @@
 # commit is HEAD, that `git status` lists no change pre-commit leaves in place
 # when told to show every untracked file and submodule change, and that no
 # ignored file lies under DIR/source or DIR/include, untracked and ignored
-# editor backup and swap files aside. Changes git is told to
+# editor and Finder files aside. Changes git is told to
 # ignore, such as with update-index --skip-worktree, are not seen.
 
 set -euo pipefail
@@ -166,6 +166,11 @@ function norm(p) {
   if (index(p, root) == 1) return substr(p, length(root) + 1)
   return p
 }
+# A key field that would be empty is written as -, so that no baseline line
+# ends in a tab that an editor or a patch tool could strip.
+function or_dash(s) {
+  return s == "" ? "-" : s
+}
 function trim(s) {
   gsub(/\t/, " ", s)
   sub(/^ +/, "", s)
@@ -182,8 +187,8 @@ function replace_all(s, from, to,    out, i) {
 }
 '
 
-# Drops the lines of standard input naming an untracked or ignored editor
-# backup or swap file (*~, *.swp, *.swo, #*#, .#*), the files the NOLINT scan's
+# Drops the lines of standard input naming an untracked or ignored editor or
+# Finder file (*~, *.swp, *.swo, #*#, .#*, .DS_Store), the files the NOLINT scan's
 # find also skips. With `status`, the lines are `git status --porcelain` lines,
 # and only `?? ` and `!! ` lines can be dropped; otherwise each line is a path.
 drop_editor_files() {
@@ -196,7 +201,7 @@ drop_editor_files() {
     sub(/"$/, "", p)
     n = split(p, parts, "/")
     b = parts[n]
-    if (b ~ /~$/ || b ~ /\.sw[po]$/ || b ~ /^#.*#$/ || b ~ /^\.#/) next
+    if (b ~ /~$/ || b ~ /\.sw[po]$/ || b ~ /^#.*#$/ || b ~ /^\.#/ || b == ".DS_Store") next
     print
   }'
 }
@@ -257,7 +262,7 @@ if [[ ${PRE_COMMIT:-} == 1 && -n ${PRE_COMMIT_REMOTE_NAME:-} ]]; then
       "check out the branch you push, and push one branch at a time"
   # Spelled out so that status.showUntrackedFiles and the submodule settings
   # cannot hide a change, and ignored files under source/ and include/ count
-  # too, since the analysis reads every file there but editor files.
+  # too, since the analysis reads every file there but editor and Finder files.
   dirty=$({
     git -C "$root" status --porcelain --untracked-files=all --ignore-submodules=none
     git -C "$root" ls-files --others --ignored --exclude-standard -- source include | awk '{ print "!! " $0 }'
@@ -267,7 +272,7 @@ if [[ ${PRE_COMMIT:-} == 1 && -n ${PRE_COMMIT_REMOTE_NAME:-} ]]; then
       "commit or undo these changes, or move the listed files out of the tree, before pushing"
 fi
 
-# The analysis reads every file under source/ and include/ but editor files, so
+# The analysis reads every file under source/ and include/ but editor and Finder files, so
 # a baseline written with files git does not track holds entries nobody else
 # reproduces.
 if [[ $mode == update ]] && git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
@@ -357,10 +362,10 @@ fi
 # Writes `nolint\t...` keys to nolint.keys, `<check>` lines to nolint.checks and
 # violations to nolint.errors.
 # Every file, whatever its extension, since clang-tidy reads any file a source
-# includes, except editor backup and swap files, which no source includes. The
+# includes, except editor and Finder files, which no source includes. The
 # patterns are drop_editor_files's.
 find "$root/source" "$root/include" -type f \
-  ! -name '*~' ! -name '*.swp' ! -name '*.swo' ! -name '#*#' ! -name '.#*' \
+  ! -name '*~' ! -name '*.swp' ! -name '*.swo' ! -name '#*#' ! -name '.#*' ! -name .DS_Store \
   -exec env LC_ALL=C awk \
   "${norm_vars[@]}" \
   -v keys="$work/nolint.keys" -v checks_out="$work/nolint.checks" -v errors="$work/nolint.errors" \
@@ -372,7 +377,7 @@ BEGIN {
 function bad(msg) { print file ":" FNR ": " msg >> errors }
 function end_file() {
   if (file == "") return
-  if (pending != "") { print pending "\t" >> keys; pending = "" }
+  if (pending != "") { print pending "\t-" >> keys; pending = "" }
   for (; depth > 0; depth--) print file ":" open_line[depth] ": NOLINTBEGIN(" open_checks[depth] ") is never closed" >> errors
 }
 function hash_line(s,    i) {
@@ -383,7 +388,7 @@ function hash_line(s,    i) {
 }
 FNR == 1 { end_file(); file = norm(FILENAME); depth = 0 }
 {
-  if (pending != "") { print pending "\t" trim($0) >> keys; pending = "" }
+  if (pending != "") { print pending "\t" or_dash(trim($0)) >> keys; pending = "" }
   line = $0
   if (index(line, "NOLINT") == 0) { hash_line(line); next }
   copy = line
@@ -422,7 +427,7 @@ FNR == 1 { end_file(); file = norm(FILENAME); depth = 0 }
   n = split(list, names, ",")
   for (i = 1; i <= n; i++) print names[i] >> checks_out
   key = "nolint\t" file "\t" trim(line)
-  if (kind == "") { print key "\t" >> keys; hash_line(line) }
+  if (kind == "") { print key "\t-" >> keys; hash_line(line) }
   else if (kind == "NEXTLINE") { pending = key; hash_line(line) }
   else {
     hash_line(line)
@@ -443,12 +448,16 @@ fi
 
 # --- Analysis ------------------------------------------------------------------
 
-pattern=$(printf '%s' "$root" | awk '{ gsub(/[][\\.^$*+?(){}|]/, "\\\\&"); print }')
+# run-clang-tidy takes regular expressions; name each source exactly, escaped.
+file_patterns=()
+while IFS= read -r s; do
+  file_patterns+=("^$(printf '%s' "$s" | awk '{ gsub(/[][\\.^$*+?(){}|]/, "\\\\&"); print }')\$")
+done <"$work/db-sources"
 # run-clang-tidy exits nonzero when a source fails to compile; a count from a
 # partial run is not a baseline, so stop. It runs from DIR because it reads
 # the .clang-tidy of its working directory before analyzing.
 if ! (cd "$root" && "$runner" -clang-tidy-binary "$tidy_path" -p "$build" -use-color=false \
-  "^$pattern/source/") >"$work/raw" 2>&1; then
+  "${file_patterns[@]}") >"$work/raw" 2>&1; then
   grep -E ': (error|fatal error):' "$work/raw" >&2 || tail -20 "$work/raw" >&2
   die "clang-tidy failed; the count is not valid"
 fi
@@ -486,7 +495,7 @@ $1 != current {
   close(current)
   for (i = n + 1; i in lines; i++) delete lines[i]
 }
-{ print "warning\t" norm($1) "\t" $4 "\t" $5 "\t" trim(($2 <= n) ? lines[$2] : "") }
+{ print "warning\t" norm($1) "\t" $4 "\t" $5 "\t" or_dash(trim(($2 <= n) ? lines[$2] : "")) }
 ' "$work/warnings.tsv" >"$work/warning.keys"
 
 # One `suppressed\t<source>\t<count>` line per source.

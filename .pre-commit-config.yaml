@@ -23,10 +23,10 @@ repos:
         types_or: [c++, c, cuda]
   - repo: local
     hooks:
-      # Compares clang-tidy's results with .clang-tidy-baseline, analyzing
-      # every source. It runs whichever files the pushed commits touch, since
-      # changes outside the sources, such as to CMakeLists.txt or the script,
-      # can change the results too.
+      # Compares clang-tidy's results with .clang-tidy-baseline. It runs on
+      # every push that adds commits, whatever files they touch, and analyzes
+      # every source, since changes outside the sources, such as to
+      # CMakeLists.txt or the script, can change the results too.
       # pre-commit runs no pre-push hook for a branch deletion, or for a new
       # branch whose commits are all on the remote already.
       - id: clang-tidy-baseline
