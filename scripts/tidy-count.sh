@@ -497,7 +497,12 @@ scan_paths=("$root/source" "$root/include")
 while IFS= read -r template; do
   generated=$build/include/${template#"$root/include/"}
   generated=${generated%.in}
-  [[ ! -f $generated ]] || scan_paths+=("$generated")
+  # A template named otherwise, or not filled in, would leave the code its
+  # directives cover unscanned.
+  [[ -f $generated ]] ||
+    die "the template $template has no filled-in header at $generated" \
+      "name a template under include/ <its output>.in, and fill it in with configure_file()"
+  scan_paths+=("$generated")
 done < <(find -L "$root/include" -type f -name '*.in')
 find -L "${scan_paths[@]}" -type f \
   ! -name '*~' ! -name '*.swp' ! -name '*.swo' ! -name '#*#' ! -name '.#*' ! -name .DS_Store \

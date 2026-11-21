@@ -46,7 +46,7 @@ The pre-push hook analyzes your working tree, so it fails unless the commit you 
 
 Fix a warning where you can. A warning that cannot be fixed is handled in one of three ways.
 
-**A warning that cannot be avoided at one site**, where disabling its check for the whole repository would be unreasonable, gets a directive on or above that site naming the check and saying why. These are the only accepted forms. A line of any file under `source/` or `include/`, or of a header CMake generates from one of their templates, whatever its extension, containing the text `NOLINT` in any other form fails the check (the editor and Finder files listed above aside), because clang-tidy honors that text anywhere on a line and in many spellings, some of which suppress every check:
+**A warning that cannot be avoided at one site**, where disabling its check for the whole repository would be unreasonable, gets a directive on or above that site naming the check and saying why. These are the only accepted forms. A line of any file under `source/` or `include/`, or of the header CMake fills in from a template `include/<path>.in` at `<build directory>/include/<path>`, the one place the script looks for it, whatever its extension, containing the text `NOLINT` in any other form fails the check (the editor and Finder files listed above aside), because clang-tidy honors that text anywhere on a line and in many spellings, some of which suppress every check:
 
 ```cpp
 code; // NOLINT(<checks>): <reason>
