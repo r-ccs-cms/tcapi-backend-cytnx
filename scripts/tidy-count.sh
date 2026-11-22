@@ -509,11 +509,9 @@ while IFS= read -r template; do
       "name a template under include/ <its output>.in, and fill it in with configure_file()"
   scan_paths+=("$generated")
 done < <(find -L "$root/include" -type f -name '*.in')
-# The single-quoted text is an awk program, for awk, not the shell, to expand.
-# shellcheck disable=SC2016
-find -L "${scan_paths[@]}" -type f \
+LC_ALL=C find -L "${scan_paths[@]}" -type f \
   ! -name '*~' ! -name '*.swp' ! -name '*.swo' ! -name '#*#' ! -name '.#*' ! -name .DS_Store \
-  -exec env LC_ALL=C awk \
+  -exec awk \
   "${norm_vars[@]}" \
   -v keys="$work/nolint.keys" -v checks_out="$work/nolint.checks" -v errors="$work/nolint.errors" \
   "$awk_lib"'
