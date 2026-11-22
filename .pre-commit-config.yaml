@@ -21,6 +21,20 @@ repos:
     hooks:
       - id: clang-format
         types_or: [c++, c, cuda]
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.14.1-1
+    hooks:
+      # Shell scripts follow Google's shell style guide, as C++ follows
+      # Google's style through .clang-format; shfmt's manual gives
+      # -i 2 -ci -bn as the flags for it. The hook declares its own stages,
+      # pre-push among them, so this lists them without pre-push.
+      - id: shfmt
+        args: [--write, -i, "2", -ci, -bn]
+        stages: [pre-commit, pre-merge-commit, manual]
   - repo: local
     hooks:
       # Compares clang-tidy's results with .clang-tidy-baseline. It runs on

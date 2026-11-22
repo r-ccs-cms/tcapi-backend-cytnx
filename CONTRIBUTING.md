@@ -16,7 +16,7 @@ cmake --preset brew-tidy
 pre-commit install
 ```
 
-`cmake --preset brew-tidy` configures `build-tidy`, which runs Homebrew LLVM's clang-tidy on the library's sources as they compile and exports the `compile_commands.json` the baseline check reads. `pre-commit install` needs pre-commit 3.2.0 or later, and installs two hooks: clang-format before each commit, and the baseline check before each push.
+`cmake --preset brew-tidy` configures `build-tidy`, which runs Homebrew LLVM's clang-tidy on the library's sources as they compile and exports the `compile_commands.json` the baseline check reads. `pre-commit install` needs pre-commit 3.2.0 or later, and installs hooks that run clang-format, ShellCheck and shfmt before each commit, and the baseline check before each push.
 
 `pre-commit install` refuses to install hooks when your git configuration sets `core.hooksPath`. Override the setting for that one command:
 

@@ -154,17 +154,17 @@ baseline=${baseline:-$default_baseline}
 # Whether FILE is the repository's baseline: the same file, or, while it does
 # not exist, the same path once made absolute.
 is_default=
-if [[ $baseline -ef $default_baseline ]] ||
-  { [[ -d $(dirname -- "$baseline") ]] && [[ $(abspath_file "$baseline") == "$default_baseline" ]]; }; then
+if [[ $baseline -ef $default_baseline ]] \
+  || { [[ -d $(dirname -- "$baseline") ]] && [[ $(abspath_file "$baseline") == "$default_baseline" ]]; }; then
   is_default=1
 fi
 [[ ! -d $baseline ]] || die "baseline $baseline is a directory; give the path of a file"
 build_arg=${build_arg:-$root/build-tidy}
-[[ -d $build_arg ]] ||
-  die "build directory $build_arg not found" "configure it with: cmake --preset brew-tidy"
+[[ -d $build_arg ]] \
+  || die "build directory $build_arg not found" "configure it with: cmake --preset brew-tidy"
 build=$(abspath "$build_arg")
-[[ -f $build/CMakeCache.txt ]] ||
-  die "$build is not a CMake build directory" "configure it with: cmake --preset brew-tidy"
+[[ -f $build/CMakeCache.txt ]] \
+  || die "$build is not a CMake build directory" "configure it with: cmake --preset brew-tidy"
 
 tidy=${CLANG_TIDY:-}
 if [[ -z $tidy ]]; then
@@ -307,28 +307,28 @@ fi
 # pre-commit sets PRE_COMMIT for every run, and PRE_COMMIT_REMOTE_NAME only
 # when a push runs the hook.
 if [[ ${PRE_COMMIT:-} == 1 && -n ${PRE_COMMIT_REMOTE_NAME:-} ]]; then
-  [[ -n ${PRE_COMMIT_TO_REF:-} ]] ||
-    die "pre-commit did not say which commit is pushed, as for a push that reaches a root commit" \
+  [[ -n ${PRE_COMMIT_TO_REF:-} ]] \
+    || die "pre-commit did not say which commit is pushed, as for a push that reaches a root commit" \
       "run $0 --check by hand, then push with SKIP=clang-tidy-baseline"
   # A pushed annotated tag arrives as the tag object; compare the commit.
   pushed=$(git -C "$root" rev-parse "$PRE_COMMIT_TO_REF^{commit}")
-  [[ $pushed == "$(git -C "$root" rev-parse HEAD)" ]] ||
-    die "the pushed commit $pushed is not HEAD, which is what this check analyzes" \
+  [[ $pushed == "$(git -C "$root" rev-parse HEAD)" ]] \
+    || die "the pushed commit $pushed is not HEAD, which is what this check analyzes" \
       "check out the branch you push, and push one branch at a time"
   # Spelled out so that status.showUntrackedFiles and the submodule settings
   # cannot hide a change, untracked files inside a submodule aside, and ignored files under source/ and include/ count
   # too, since the analysis reads every file there but editor and Finder files.
   # Each runs on its own, so that neither one's failure can pass for a clean tree.
-  status_out=$(git -C "$root" status --porcelain --untracked-files=all --ignore-submodules=untracked) ||
-    die "git status failed, so whether the working tree is HEAD cannot be checked"
-  ignored_out=$(git -C "$root" ls-files --others --ignored --exclude-standard -- source include) ||
-    die "git ls-files failed, so whether the working tree is HEAD cannot be checked"
+  status_out=$(git -C "$root" status --porcelain --untracked-files=all --ignore-submodules=untracked) \
+    || die "git status failed, so whether the working tree is HEAD cannot be checked"
+  ignored_out=$(git -C "$root" ls-files --others --ignored --exclude-standard -- source include) \
+    || die "git ls-files failed, so whether the working tree is HEAD cannot be checked"
   dirty=$({
     printf '%s\n' "$status_out"
     printf '%s\n' "$ignored_out" | awk 'length { print "!! " $0 }'
   } | drop_editor_files status | awk 'length')
-  [[ -z $dirty ]] ||
-    die "the working tree differs from HEAD, which is what is pushed:" "$dirty" \
+  [[ -z $dirty ]] \
+    || die "the working tree differs from HEAD, which is what is pushed:" "$dirty" \
       "commit or undo these changes, or move the listed files out of the tree, before pushing"
 fi
 
@@ -337,16 +337,16 @@ fi
 # reproduces.
 if [[ $mode == update ]] && git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
   untracked=$(git -C "$root" ls-files --others -- source include | drop_editor_files)
-  [[ -z $untracked ]] ||
-    die "--update would record files git does not track:" "$untracked" \
+  [[ -z $untracked ]] \
+    || die "--update would record files git does not track:" "$untracked" \
       "commit them or move them out of the tree first"
 fi
 
 # --- Configure, and check the compilation database ---------------------------
 
 home=$(cache_value CMAKE_HOME_DIRECTORY)
-[[ -n $home && $home -ef $root ]] ||
-  die "$build was configured from ${home:-an unknown tree}, not from $root"
+[[ -n $home && $home -ef $root ]] \
+  || die "$build was configured from ${home:-an unknown tree}, not from $root"
 # compile_commands.json and clang-tidy spell paths the way CMake was configured
 # with them, which differs from DIR and BUILD_DIR when CMake reached the same
 # directories by another path, such as through a symbolic link, so match
@@ -366,8 +366,8 @@ norm_vars=(-v "build=$build/" -v "root=$root/")
 stamp=$build/CMakeFiles/cmake.check_cache
 [[ -f $stamp ]] || stamp=$build/CMakeCache.txt
 for presets in "$root/CMakePresets.json" "$root/CMakeUserPresets.json"; do
-  [[ ! $presets -nt $stamp ]] ||
-    die "$presets was written after $build was last configured" \
+  [[ ! $presets -nt $stamp ]] \
+    || die "$presets was written after $build was last configured" \
       "configure it again, with its preset if it has one, as in: cmake --preset brew-tidy" \
       "in a push with an unstaged change to it, commit or undo that change first"
 done
@@ -409,15 +409,15 @@ awk -F'\t' -v p="$root/source/" 'index($1, p) == 1' "$work/db.tsv" >"$work/db-tc
 # clang-tidy runs each command in its directory and reports a relative path
 # from there; the warning parser reads such paths from BUILD_DIR.
 while IFS= read -r dir; do
-  [[ $dir -ef $build ]] ||
-    die "a TCAPI source compiles in $dir, not in $build, where this script reads relative warning paths from"
+  [[ $dir -ef $build ]] \
+    || die "a TCAPI source compiles in $dir, not in $build, where this script reads relative warning paths from"
 done < <(awk -F'\t' '{ print $3 }' "$work/db-tcapi.tsv" | LC_ALL=C sort -u)
 
 awk -F'\t' '{ print $1 }' "$work/db-tcapi.tsv" | LC_ALL=C sort -u >"$work/db-sources"
 find "$root/source" -type f -name '*.cpp' | LC_ALL=C sort >"$work/disk-sources"
 missing=$(LC_ALL=C comm -23 "$work/disk-sources" "$work/db-sources")
-[[ -z $missing ]] ||
-  die "these sources are not in $build/compile_commands.json, so they would not be analyzed:" \
+[[ -z $missing ]] \
+  || die "these sources are not in $build/compile_commands.json, so they would not be analyzed:" \
     "$missing" "a unity build or a source CMake does not compile leaves them out"
 nsources=$(count_lines "$work/db-sources")
 ((nsources > 0)) || die "no source under $root/source is in $build/compile_commands.json"
@@ -469,8 +469,8 @@ function word(s) { return s ~ /[ \t]/ ? "\"" s "\"" : s }
   }
   sub(/^ /, "", opts)
   print "config\t" norm($1) "\t" or_dash(opts)
-}' "$work/db-tcapi.tsv" | LC_ALL=C sort -u >"$work/config" ||
-  die "the compile command above reads a response file, whose options the configuration check cannot see"
+}' "$work/db-tcapi.tsv" | LC_ALL=C sort -u >"$work/config" \
+  || die "the compile command above reads a response file, whose options the configuration check cannot see"
 
 if [[ $mode == check ]]; then
   awk -F'\t' '$1 == "config"' <"$baseline" | LC_ALL=C sort -u >"$work/base-config"
@@ -504,11 +504,13 @@ while IFS= read -r template; do
   generated=${generated%.in}
   # A template named otherwise, or not filled in, would leave the code its
   # directives cover unscanned.
-  [[ -f $generated ]] ||
-    die "the template $template has no filled-in header at $generated" \
+  [[ -f $generated ]] \
+    || die "the template $template has no filled-in header at $generated" \
       "name a template under include/ <its output>.in, and fill it in with configure_file()"
   scan_paths+=("$generated")
 done < <(find -L "$root/include" -type f -name '*.in')
+# The single-quoted text is an awk program, for awk, not the shell, to expand.
+# shellcheck disable=SC2016
 find -L "${scan_paths[@]}" -type f \
   ! -name '*~' ! -name '*.swp' ! -name '*.swo' ! -name '#*#' ! -name '.#*' ! -name .DS_Store \
   -exec env LC_ALL=C awk \
@@ -630,8 +632,8 @@ fi
 # LLVM 21 prints `Running clang-tidy for M files out of N ...`, LLVM 23
 # `Running clang-tidy in T threads for M files out of N ...`.
 analyzed=$(awk '/^Running clang-tidy .*for [0-9]+ files out of/ { for (i = 1; i <= NF; i++) if ($i == "for") { print $(i + 1); exit } }' "$work/raw")
-[[ $analyzed == "$nsources" ]] ||
-  die "run-clang-tidy analyzed ${analyzed:-no} files, but $nsources sources are in the database"
+[[ $analyzed == "$nsources" ]] \
+  || die "run-clang-tidy analyzed ${analyzed:-no} files, but $nsources sources are in the database"
 
 # One `<path>\t<line>\t<column>\t<checks>\t<message>` line per distinct warning.
 # A message can span lines, as a [[deprecated("...\n...")]] text does. A
@@ -718,18 +720,18 @@ $0 ~ warning {
 END {
   if (failed) exit 1
   finish()
-}' "$work/raw" | LC_ALL=C sort -u >"$work/warnings.tsv" ||
-  die "the warning above has no [checks] list, so it cannot be counted"
+}' "$work/raw" | LC_ALL=C sort -u >"$work/warnings.tsv" \
+  || die "the warning above has no [checks] list, so it cannot be counted"
 
 # A warning is keyed by the text of its line, read from its file. A reported
 # path can name no file, and dropping a dir/.. step reaches another file when
 # dir is a symbolic link; either would key it by the wrong text or none.
 touch "$work/paths.tsv"
 while IFS=$'\t' read -r reported path; do
-  (CDPATH='' cd -- "$build" && [[ -f $reported ]]) ||
-    die "clang-tidy reported a warning in $reported, which is not a file seen from $build"
-  (CDPATH='' cd -- "$build" && [[ $reported -ef $path ]]) ||
-    die "clang-tidy reported a warning in $reported, which this script reads as $path, another file, as past a symbolic link"
+  (CDPATH='' cd -- "$build" && [[ -f $reported ]]) \
+    || die "clang-tidy reported a warning in $reported, which is not a file seen from $build"
+  (CDPATH='' cd -- "$build" && [[ $reported -ef $path ]]) \
+    || die "clang-tidy reported a warning in $reported, which this script reads as $path, another file, as past a symbolic link"
 done < <(LC_ALL=C sort -u "$work/paths.tsv")
 
 out="$build/clang-tidy-warnings.txt"
@@ -786,8 +788,8 @@ END {
   for (i = 1; i <= n; i++) if (!(list[i] in seen)) { print "no run-clang-tidy output for " list[i] > "/dev/stderr"; exit 1 }
   for (i = 1; i <= n; i++) print "suppressed\t" norm(list[i]) "\t" count[list[i]]
 }
-' "$work/raw" >"$work/suppressed.keys" ||
-  die "could not attribute clang-tidy's suppression counts to the sources"
+' "$work/raw" >"$work/suppressed.keys" \
+  || die "could not attribute clang-tidy's suppression counts to the sources"
 
 cat "$work/warning.keys" "$work/nolint.keys" "$work/suppressed.keys" | count_keys >"$work/current"
 
