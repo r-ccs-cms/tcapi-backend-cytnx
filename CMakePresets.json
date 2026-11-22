@@ -62,6 +62,17 @@
       }
     },
     {
+      "name": "brew-tidy",
+      "displayName": "clang-tidy build with Homebrew dependencies",
+      "description": "macOS debug build that runs Homebrew LLVM's clang-tidy on TCAPI's sources",
+      "inherits": "brew",
+      "binaryDir": "build-tidy",
+      "cacheVariables": {
+        "TCAPI_CLANG_TIDY": "/opt/homebrew/opt/llvm/bin/clang-tidy",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
       "name": "intel-debug",
       "displayName": "Debug build with Intel oneAPI",
       "description": "Linux debug build using Intel oneAPI compilers (icx/icpx) and MKL. Requires: module load intel/oneapi",
@@ -104,6 +115,11 @@
     {
       "name": "brew-debug",
       "configurePreset": "brew-debug",
+      "jobs": 8
+    },
+    {
+      "name": "brew-tidy",
+      "configurePreset": "brew-tidy",
       "jobs": 8
     },
     {
