@@ -1,4 +1,8 @@
-# The stage names below need pre-commit 3.2.0 or later.
+# pre-commit builds a Python hook's environment with the Python pre-commit
+# runs on, and shellcheck-py needs Python 3.9 or later, as pre-commit does from
+# 4.0.0. Older versions reject this file, naming the version needed, before
+# building any hook's environment.
+minimum_pre_commit_version: "4.0.0"
 # `pre-commit install` installs both hook types. A hook that declares no stage
 # runs at every stage in default_stages, which lists all of pre-commit's
 # stages except pre-push, so that only the clang-tidy check runs at push.
