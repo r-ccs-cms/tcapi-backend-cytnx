@@ -282,16 +282,23 @@ configure_file(
 
 # ---- Add source files ----
 
-# Note: globbing sources is considered bad practice as CMake's generators may not detect new files
-# automatically. Keep that in mind when changing files, or explicitly mention them here.
-file(GLOB_RECURSE headers CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h")
-file(GLOB_RECURSE sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/source/*.cpp")
+set(sources
+    source/construction_destruction.cpp
+    source/debugging.cpp
+    source/io_operations.cpp
+    source/miscellaneous.cpp
+    source/read_only_getters.cpp
+    source/tcapi_base.cpp
+    source/tensor_linear_algebra.cpp
+    source/tensor_manipulation.cpp
+    source/tensor_traits.cpp
+)
 
 # ---- Create library ----
 
 # Note: for header-only libraries change all PUBLIC flags to INTERFACE and create an interface
 # target: add_library(${PROJECT_NAME} INTERFACE)
-add_library(${PROJECT_NAME} ${headers} ${sources})
+add_library(${PROJECT_NAME} ${sources})
 set_target_properties(${PROJECT_NAME} PROPERTIES CXX_STANDARD 17)
 
 # ---- Compiler warnings ----

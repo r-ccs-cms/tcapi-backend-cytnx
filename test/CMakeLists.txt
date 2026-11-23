@@ -32,8 +32,21 @@ endif()
 
 # ---- Create binary ----
 
-file(GLOB sources CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/source/*.cpp)
-message(STATUS "Test sources found: ${sources}")
+set(sources
+    source/conformance_runner.cpp
+    source/contract_axis_mapping_test.cpp
+    source/main.cpp
+    source/tcapi_basic_gpu.cpp
+    source/tcapi_itebd_integration.cpp
+    source/tcapi_template_test.cpp
+    source/tcapi_utilities_tests.cpp
+    source/test_adl_user_overloads.cpp
+    source/test_cytnx_typed_tensor.cpp
+    source/test_extract_sub_noncontig.cpp
+    source/test_io_operations.cpp
+    source/test_linear_algebra.cpp
+    source/test_tensor_operations.cpp
+)
 add_executable(${PROJECT_NAME} ${sources})
 target_link_libraries(${PROJECT_NAME} doctest::doctest TCAPI::TCAPI)
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../external/tcapict/include)
