@@ -1,8 +1,7 @@
 # pre-commit builds a Python hook's environment with the Python pre-commit
-# runs on, and shellcheck-py needs Python 3.9 or later, as pre-commit does from
-# 3.6.0. A run of an older pre-commit from 3.2.0 stops at this line, naming
-# the version needed, before it builds any hook's environment; one older still
-# stops at the stage names below.
+# runs on, and shellcheck-py v0.11.0.1 needs Python 3.9 or later, as pre-commit
+# does from 3.6.0. An older pre-commit rejects this file before it builds any
+# hook's environment.
 minimum_pre_commit_version: "3.6.0"
 # `pre-commit install` installs both hook types. A hook that declares no stage
 # runs at every stage in default_stages, which lists all of pre-commit's
