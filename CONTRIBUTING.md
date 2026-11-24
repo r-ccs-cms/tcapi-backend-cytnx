@@ -13,15 +13,15 @@ On macOS with Homebrew:
 ```bash
 brew install llvm
 cmake --preset brew-tidy
-pre-commit install
+pre-commit validate-config .pre-commit-config.yaml && pre-commit install
 ```
 
-`cmake --preset brew-tidy` configures `build-tidy`, which runs Homebrew LLVM's clang-tidy on the library's sources as they compile and exports the `compile_commands.json` the baseline check reads. `pre-commit install` needs pre-commit 3.2.0 or later, running on Python 3.9 or later, which the ShellCheck hook needs; it installs hooks that run clang-format, ShellCheck and shfmt before each commit, and the baseline check before each push.
+`cmake --preset brew-tidy` configures `build-tidy`, which runs Homebrew LLVM's clang-tidy on the library's sources as they compile and exports the `compile_commands.json` the baseline check reads. `pre-commit install` needs pre-commit 3.6.0 or later, which itself needs Python 3.9 or later, and installs hooks that run clang-format, ShellCheck and shfmt before each commit, and the baseline check before each push. `pre-commit validate-config` fails on an older pre-commit before anything is installed. Without it, an older `pre-commit install` would succeed but install only the commit hook, which then stops every commit, and no push hook. Upgrade pre-commit to 3.6.0 or later and run the commands again.
 
 `pre-commit install` refuses to install hooks when your git configuration sets `core.hooksPath`. Override the setting for that one command:
 
 ```bash
-GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0= pre-commit install
+pre-commit validate-config .pre-commit-config.yaml && GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0= pre-commit install
 ```
 
 The hooks are then in `.git/hooks`, and git still runs the hooks in the `core.hooksPath` directory. They run only if that directory's hooks run the ones in `.git/hooks`. If yours do not, run `scripts/tidy-count.sh --check` yourself before pushing.
