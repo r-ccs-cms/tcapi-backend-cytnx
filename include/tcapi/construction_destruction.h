@@ -1,11 +1,9 @@
 #pragma once
 
-#include <complex>
+#include <cstddef>
 #include <functional>
-#include <type_traits>
-#include <utility>
 
-#include "tcapi/cytnx_tensor_traits.h"
+#include "tcapi/cytnx_tensor_traits.h"  // IWYU pragma: keep
 #include "tcapi/read_only_getters.h"
 #include "tcapi/tensor_manipulation.h"
 #include "tcapi/tensor_traits.h"

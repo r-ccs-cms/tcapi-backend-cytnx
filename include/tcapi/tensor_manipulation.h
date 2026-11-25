@@ -4,8 +4,7 @@
 #include <cytnx.hpp>
 #include <type_traits>
 
-#include "tcapi/cytnx_tensor_traits.h"
-#include "tcapi/read_only_getters.h"
+#include "tcapi/cytnx_tensor_traits.h"  // IWYU pragma: keep
 #include "tcapi/tensor_traits.h"
 
 namespace tcapi {

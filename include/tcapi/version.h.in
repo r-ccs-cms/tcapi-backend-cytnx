@@ -30,4 +30,4 @@ std::string version();
 } // namespace tcapi
 
 // Include Cytnx backend specializations
-#include "tcapi/detail/version_impl.h"
+#include "tcapi/detail/version_impl.h"  // IWYU pragma: keep

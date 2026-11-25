@@ -1,14 +1,15 @@
 #pragma once
 
 #include <algorithm>
+#include <cstddef>
 #include <cytnx.hpp>
-#include <map>
-#include <numeric>
+#include <iterator>
 #include <set>
 #include <sstream>
-#include <string_view>
+#include <stdexcept>
+#include <vector>
 
-#include "tcapi/cytnx_tensor_traits.h"
+#include "tcapi/cytnx_tensor_traits.h"  // IWYU pragma: keep
 #include "tcapi/tensor_traits.h"
 
 namespace tcapi {

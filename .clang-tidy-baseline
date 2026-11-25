@@ -114,9 +114,6 @@ config	source/tensor_traits.cpp	-DTCAPICYTNX_USE_GESDD -std=gnu++20
 1	warning	source/debugging.cpp	misc-include-cleaner	no header providing "std::chrono::duration_cast" is directly included	= std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time_);
 1	warning	source/debugging.cpp	misc-include-cleaner	no header providing "std::chrono::high_resolution_clock" is directly included	: name_(name), start_time_(std::chrono::high_resolution_clock::now()) {}
 1	warning	source/debugging.cpp	misc-include-cleaner	no header providing "std::chrono::microseconds" is directly included	= std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time_);
-1	warning	source/debugging.cpp	misc-include-cleaner	no header providing "std::cout" is directly included	std::cout << "[TCAPI] " << function_name;
-1	warning	source/debugging.cpp	misc-include-cleaner	no header providing "std::endl" is directly included	std::cout << std::endl;
-1	warning	source/debugging.cpp	misc-include-cleaner	no header providing "std::fixed" is directly included	std::cout << "[TCAPI] " << name_ << " took " << std::fixed << std::setprecision(3)
 1	warning	source/debugging.cpp	misc-include-cleaner	no header providing "std::string" is directly included	void print_function_entry(const std::string& function_name, const std::string& tensor_info) {
 1	warning	source/debugging.cpp	modernize-concat-nested-namespaces	nested namespaces can be concatenated	namespace tcapi {
 1	warning	source/debugging.cpp	modernize-pass-by-value	pass by value and use std::move	Timer::Timer(const std::string& name)
