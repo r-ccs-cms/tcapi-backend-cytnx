@@ -3,10 +3,12 @@
 # does from 3.6.0. An older pre-commit rejects this file before it builds any
 # hook's environment.
 minimum_pre_commit_version: "3.6.0"
-# `pre-commit install` installs both hook types. A hook that declares no stage
-# runs at every stage in default_stages, which lists all of pre-commit's
-# stages except pre-push, so that only the clang-tidy check runs at push.
-default_install_hook_types: [pre-commit, pre-push]
+# `pre-commit install` installs these hook types; git runs pre-merge-commit,
+# not pre-commit, for a merge that needs no conflict resolution. A hook that
+# declares no stage runs at every stage in default_stages, which lists all of
+# pre-commit's stages except pre-push, so that only the clang-tidy check runs
+# at push.
+default_install_hook_types: [pre-commit, pre-merge-commit, pre-push]
 default_stages:
   - commit-msg
   - post-checkout
@@ -55,3 +57,15 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-push]
+      # Runs include-what-you-use on every header under include/tcapi/. It runs
+      # on every commit, whatever files it changes: pre-commit passes a hook no
+      # deleted file, nor, under the default types, a submodule, and a change
+      # outside the headers, such as to CMakeLists.txt or Cytnx, can change the
+      # results.
+      - id: iwyu
+        name: include-what-you-use
+        entry: scripts/iwyu-check.py
+        language: python
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit, pre-merge-commit, manual]
