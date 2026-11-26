@@ -63,7 +63,10 @@ def die(message, *details):
 
 
 def run(args, cwd=ROOT, env=None):
-    return subprocess.run(
+    """args run to completion, with stderr in stdout. The output is decoded as
+    file names are, not as text, which would turn a carriage return in a file
+    name git prints into a newline."""
+    result = subprocess.run(
         args,
         check=False,
         cwd=cwd,
@@ -71,8 +74,9 @@ def run(args, cwd=ROOT, env=None):
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        text=True,
     )
+    result.stdout = os.fsdecode(result.stdout)
+    return result
 
 
 def run_checked(args, shown=None, ok=(0,), cwd=ROOT, env=None):
