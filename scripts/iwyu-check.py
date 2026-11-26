@@ -47,8 +47,12 @@ BUILD = ROOT / "build-iwyu"
 PRESET = "brew"
 CHECKED_VERSION = "0.27"
 EDITOR_AND_FINDER_FILES = ["*~", "*.swp", "*.swo", "#*#", ".#*", ".DS_Store"]
-# Options that name an include directory, as the next argument or joined to it.
+# Options that name an include directory as their next argument, and the two
+# whose joined form, as in -I/path, is read too, the form CMake writes them in.
+# Matching only these keeps an option such as -iframeworkwithsysroot from being
+# read as -iframework.
 INCLUDE_DIR_OPTIONS = ("-I", "-isystem", "-iquote", "-idirafter", "-iframework", "-F")
+JOINED_INCLUDE_DIR_OPTIONS = ("-I", "-F")
 
 
 def die(message, *details):
@@ -71,13 +75,17 @@ def run(args, cwd=ROOT, env=None):
     )
 
 
+def env_without_git_locals():
+    """The environment without the variables `git rev-parse --local-env-vars`
+    lists, which belong to this repository; git sets some of them, such as
+    GIT_INDEX_FILE, for its hooks. A git run for another repository, as in a
+    submodule or by a CMake download, must not inherit them."""
+    local = set(git("rev-parse", "--local-env-vars").split())
+    return {k: v for k, v in os.environ.items() if k not in local}
+
+
 def git(*args, cwd=ROOT):
-    env = None
-    if cwd != ROOT:
-        # git exports GIT_INDEX_FILE and others to its hooks; they name this
-        # repository's files, so git in a submodule must not inherit them.
-        local = set(run(["git", "rev-parse", "--local-env-vars"]).stdout.split())
-        env = {k: v for k, v in os.environ.items() if k not in local}
+    env = env_without_git_locals() if cwd != ROOT else None
     result = run(["git", *args], cwd=cwd, env=env)
     if result.returncode != 0:
         die(f"git {' '.join(args)} failed:", *result.stdout.splitlines())
@@ -150,7 +158,7 @@ def configure():
         "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
         "-DTCAPI_CLANG_TIDY=",
     ]
-    result = run(command)
+    result = run(command, env=env_without_git_locals())
     if result.returncode != 0:
         die(f"cmake {' '.join(command[1:])} failed:", *result.stdout.splitlines())
     database = BUILD / "compile_commands.json"
@@ -176,7 +184,9 @@ def compile_options(database):
     """The compiler of the TCAPI sources, the directory they compile in, and the
     options they all compile with."""
     source_dir = os.path.realpath(ROOT / "source") + os.sep
-    options = {}
+    # One (source, options) pair per entry, so that a source compiled twice
+    # with different options shows as different.
+    options = []
     for entry in json.loads(database.read_text()):
         directory = entry["directory"]
         file = resolve(directory, entry["file"])
@@ -194,17 +204,17 @@ def compile_options(database):
                 next(rest, None)
             elif not dropped(arg, directory, file):
                 kept.append(arg)
-        options[os.path.relpath(file, ROOT)] = (args[0], directory, tuple(kept))
+        options.append((os.path.relpath(file, ROOT), (args[0], directory, tuple(kept))))
     if not options:
         die(
             f"{database} lists no source under {ROOT / 'source'}",
             "the configure is expected to export the TCAPI target's compile commands",
         )
-    distinct = set(options.values())
+    distinct = {value for _, value in options}
     if len(distinct) > 1:
         details = []
         for value in distinct:
-            sources = sorted(s for s, v in options.items() if v == value)
+            sources = sorted({s for s, v in options if v == value})
             details.append(
                 f"{', '.join(sources)}: {value[0]} {' '.join(value[2])} (in {value[1]})"
             )
@@ -225,19 +235,22 @@ def compile_options(database):
 
 
 def named_dirs(options, directory):
-    """The directories the options themselves name for the include search."""
+    """The directories the options themselves name for the include search, in
+    the forms INCLUDE_DIR_OPTIONS and JOINED_INCLUDE_DIR_OPTIONS describe."""
     dirs = set()
     rest = iter(options)
     for arg in rest:
-        for flag in INCLUDE_DIR_OPTIONS:
-            if arg == flag:
-                value = next(rest, "")
-                break
-            if arg.startswith(flag):
-                value = arg[len(flag) :]
-                break
+        if arg in INCLUDE_DIR_OPTIONS:
+            value = next(rest, "")
         else:
-            continue
+            value = next(
+                (
+                    arg[len(f) :]
+                    for f in JOINED_INCLUDE_DIR_OPTIONS
+                    if arg.startswith(f)
+                ),
+                "",
+            )
         if value:
             dirs.add(resolve(directory, value))
     return dirs

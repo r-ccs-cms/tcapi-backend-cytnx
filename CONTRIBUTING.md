@@ -104,7 +104,7 @@ pre-commit runs the hook only when it finds that the push adds commits, which it
 
 [include-what-you-use](https://github.com/include-what-you-use/include-what-you-use) (IWYU) checks that each header under `include/tcapi/` includes a header for every name it uses and none it does not use. It analyzes each header as its own main file, so every header must also compile on its own.
 
-The pre-commit hook runs `scripts/iwyu-check.py` on each commit and merge commit it is run for, whatever files the commit changes, and takes several seconds, since it configures a build and runs IWYU on every header. Run the script yourself to check the working tree, and `SKIP=iwyu git commit` to commit without the check.
+The pre-commit hook runs `scripts/iwyu-check.py` on each commit and merge commit it is run for, whatever files the commit changes, and takes several seconds, since it configures a build and runs IWYU on every header. Run the script yourself to check the working tree, and `SKIP=iwyu git commit` to commit without the check. Where the `brew` preset cannot be configured, commit with `SKIP=iwyu`.
 
 When a header fails, the script prints the includes IWYU asks to add and to remove, or the errors that stopped it. Make those changes, except where one of the pragmas below applies.
 
