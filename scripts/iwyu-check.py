@@ -75,6 +75,15 @@ def run(args, cwd=ROOT, env=None):
     )
 
 
+def run_checked(args, shown, ok=(0,), cwd=ROOT, env=None):
+    """run(args), stopping with its output when it exits with a code not in ok;
+    shown is the command as the message names it."""
+    result = run(args, cwd=cwd, env=env)
+    if result.returncode not in ok:
+        die(f"{shown} failed:", *result.stdout.splitlines())
+    return result
+
+
 def env_without_git_locals():
     """The environment without the variables `git rev-parse --local-env-vars`
     lists, which belong to this repository; git sets some of them, such as
@@ -86,10 +95,7 @@ def env_without_git_locals():
 
 def git(*args, cwd=ROOT):
     env = env_without_git_locals() if cwd != ROOT else None
-    result = run(["git", *args], cwd=cwd, env=env)
-    if result.returncode != 0:
-        die(f"git {' '.join(args)} failed:", *result.stdout.splitlines())
-    return result.stdout
+    return run_checked(["git", *args], f"git {' '.join(args)}", cwd=cwd, env=env).stdout
 
 
 def git_paths(command, *args, cwd=ROOT):
@@ -114,7 +120,9 @@ def check_tree():
     # while a checkout at another commit and an edited file differ. Untracked
     # files in Cytnx are checked below, under include/, which IWYU reads.
     cytnx = ["--ignore-submodules=untracked", "--", "external/Cytnx"]
-    if run(["git", "diff", "--quiet", *cytnx]).returncode != 0:
+    # --quiet exits with 1 for a difference; any other nonzero code is a failure.
+    diff = ["diff", "--quiet", *cytnx]
+    if run_checked(["git", *diff], f"git {' '.join(diff)}", ok=(0, 1)).returncode:
         die(
             "external/Cytnx differs from the commit the index records:",
             *git("diff", "--submodule=short", *cytnx).splitlines(),
@@ -147,8 +155,8 @@ def find_executable(name):
 def configure():
     (BUILD / "compile_commands.json").unlink(missing_ok=True)
     shutil.rmtree(BUILD / "include", ignore_errors=True)
-    # The empty TCAPI_CLANG_TIDY keeps a clang-tidy left in the cache, as by a
-    # configure with brew-tidy, out of the generated build files.
+    # The empty TCAPI_CLANG_TIDY keeps a clang-tidy left in build-iwyu's cache
+    # out of the generated build files.
     command = [
         find_executable("cmake"),
         "--preset",
@@ -158,9 +166,7 @@ def configure():
         "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
         "-DTCAPI_CLANG_TIDY=",
     ]
-    result = run(command, env=env_without_git_locals())
-    if result.returncode != 0:
-        die(f"cmake {' '.join(command[1:])} failed:", *result.stdout.splitlines())
+    run_checked(command, f"cmake {' '.join(command[1:])}", env=env_without_git_locals())
     database = BUILD / "compile_commands.json"
     if not database.is_file():
         die(f"{database} was not written; the configure exported no compile commands")
