@@ -5,10 +5,12 @@
 On macOS with Homebrew:
 
 ```bash
-brew install llvm include-what-you-use
+brew install llvm
 cmake --preset brew-tidy
 pre-commit validate-config .pre-commit-config.yaml && pre-commit install
 ```
+
+Install [include-what-you-use](#include-what-you-use) as well, by any means that puts it on `PATH`.
 
 `cmake --preset brew-tidy` configures `build-tidy`, which runs Homebrew LLVM's clang-tidy on the library's sources as they compile and exports the `compile_commands.json` the baseline check reads. `pre-commit install` needs pre-commit 3.6.0 or later, which itself needs Python 3.9 or later, and installs hooks that run clang-format, ShellCheck, shfmt and the [include-what-you-use](#include-what-you-use) check before each commit and each merge commit, and the baseline check before each push. Run `pre-commit install` again whenever `default_install_hook_types` in `.pre-commit-config.yaml` changes, since it installs only the hook types listed when it runs. `pre-commit validate-config` fails on an older pre-commit before anything is installed. Without it, an older `pre-commit install` would succeed but install only the commit hook, which then stops every commit, and no other hook. Upgrade pre-commit to 3.6.0 or later and run the commands again.
 
@@ -106,9 +108,11 @@ The pre-commit hook runs `scripts/iwyu-check.py` on each commit and merge commit
 
 When a header fails, the script prints the includes IWYU asks to add and to remove, or the errors that stopped it. Make those changes, except where one of the pragmas below applies.
 
-The script configures its own build directory, `build-iwyu`, with the `brew-tidy` preset on every run, and analyzes the headers with the options the TCAPI sources compile with there. Like any configure, it keeps that directory's CMake cache from one run to the next; delete `build-iwyu` to start from an empty cache. The script needs what `cmake --preset brew-tidy` needs, and IWYU: the program `$IWYU` names when that is not empty, and `include-what-you-use` otherwise, a name without a directory being looked up on `PATH`, in `/opt/homebrew/bin` and in `/usr/local/bin`. The headers were made clean with IWYU 0.27 on macOS. Another IWYU version or another standard library can ask for changes to headers nobody changed; when a header fails, the script prints the IWYU version it ran, and says so when it is not 0.27.
+The script takes `cmake` and `include-what-you-use` from `PATH`. It configures its own build directory, `build-iwyu`, with the `brew` preset on every run, so it also needs what `cmake --preset brew` needs, and analyzes the headers with the options the TCAPI sources compile with there. It gives IWYU the system include directories the build's compiler reports for those options, so IWYU reads the standard library the build uses even when its own clang would not find one, as with nixpkgs' include-what-you-use on macOS. Like any configure, this one keeps `build-iwyu`'s CMake cache from one run to the next; delete `build-iwyu` to start from an empty cache.
 
-IWYU reads the working tree, where pre-commit has set aside unstaged changes to tracked files but not untracked files or changes inside a submodule. So the script stops before analyzing anything when a file under `include/` is not tracked by git, editor and Finder files (`*~`, `*.swp`, `*.swo`, `#*#`, `.#*`, `.DS_Store`) aside, and when `external/Cytnx` has changes or is checked out at a commit other than the one the index records.
+The headers were made clean with IWYU 0.27 against Apple clang's libc++, the compiler the `brew` preset takes by default. Another IWYU version or another standard library can ask for changes to headers nobody changed: against GCC's libstdc++, for one, IWYU asks to remove an include that the libc++ result keeps. When a header fails, the script prints the IWYU version it ran and the compiler whose standard library it read, and says so when the version is not 0.27. A `build-iwyu` first configured with another compiler, as when `CXX` was set, keeps it; delete `build-iwyu` and run again with `CXX` unset.
+
+IWYU reads the working tree, where pre-commit has set aside unstaged changes to tracked files but not untracked files or changes inside a submodule. So the script stops before analyzing anything when a file under `include/` or `external/Cytnx/include/` is not tracked by git, editor and Finder files (`*~`, `*.swp`, `*.swo`, `#*#`, `.#*`, `.DS_Store`) aside, and when `external/Cytnx` has edited files or is checked out at a commit other than the one the index records.
 
 ### Pragmas
 

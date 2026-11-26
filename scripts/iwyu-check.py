@@ -3,28 +3,32 @@
 
 Usage: scripts/iwyu-check.py
 
-Runs IWYU on every file git tracks under include/tcapi/, each as its own main
-file, and exits nonzero when IWYU asks any of them to add or remove an include,
-or cannot parse one. pre-commit runs it before each commit and each merge
-commit.
+Runs IWYU on every file git tracks under include/tcapi/ that the working tree
+holds, each as its own main file, and exits nonzero when IWYU asks any of them
+to add or remove an include, or cannot parse one. pre-commit runs it before
+each commit and each merge commit.
+
+cmake and include-what-you-use are taken from PATH.
 
 The compile options come from a build the script configures itself, in
-build-iwyu with the brew-tidy preset, on every run; no other build is touched.
-It removes the database and the generated headers there first, so that a
+build-iwyu with the brew preset, on every run; no other build is touched. It
+removes the database and the generated headers there first, so that a
 configure that does not write them leaves none behind to be read. All TCAPI
 sources compile with one set of options, which the headers are analyzed with.
+IWYU is also given the system include directories the build's compiler reports
+for those options, so that it reads the standard library the build uses rather
+than one of its own.
 
 IWYU reads the working tree, which pre-commit has reduced to what is staged,
 except for files git does not track and for submodules. So the script first
-stops when a file under include/ is not tracked, editor and Finder files (*~,
-*.swp, *.swo, #*#, .#*, .DS_Store) aside, or when external/Cytnx differs from
-the commit the index records.
+stops when a file under include/ or external/Cytnx/include/ is not tracked,
+editor and Finder files (*~, *.swp, *.swo, #*#, .#*, .DS_Store) aside, or when
+external/Cytnx is checked out at a commit other than the one the index records
+or has edited files.
 
-IWYU is the program $IWYU names when that is set and not empty, and
-include-what-you-use otherwise; a name without a directory is looked up on
-PATH, /opt/homebrew/bin and /usr/local/bin. The headers were made clean with
-IWYU 0.27 on macOS; another IWYU version or another standard library may report
-headers nobody changed.
+The headers were made clean with IWYU 0.27 against Apple clang's libc++;
+another IWYU version or another standard library may report headers nobody
+changed.
 """
 
 import fnmatch
@@ -40,11 +44,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BUILD = ROOT / "build-iwyu"
-PRESET = "brew-tidy"
+PRESET = "brew"
 CHECKED_VERSION = "0.27"
-# A GUI git client's PATH lacks Homebrew, which the macOS toolchain file runs.
-EXTRA_PATH = ["/opt/homebrew/bin", "/usr/local/bin"]
 EDITOR_AND_FINDER_FILES = ["*~", "*.swp", "*.swo", "#*#", ".#*", ".DS_Store"]
+# Options that name an include directory, as the next argument or joined to it.
+INCLUDE_DIR_OPTIONS = ("-I", "-isystem", "-iquote", "-idirafter", "-iframework", "-F")
 
 
 def die(message, *details):
@@ -60,6 +64,7 @@ def run(args, cwd=ROOT, env=None):
         check=False,
         cwd=cwd,
         env=env,
+        stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -83,80 +88,98 @@ def git_paths(command, *args, cwd=ROOT):
     return [p for p in git(command, "-z", *args, cwd=cwd).split("\0") if p]
 
 
-def check_tree():
-    # The working tree against the index: a staged change of the pin passes,
-    # while a checkout at another commit, an edited file and an untracked one
-    # all differ.
-    cytnx = ["--ignore-submodules=none", "--", "external/Cytnx"]
-    if run(["git", "diff", "--quiet", *cytnx]).returncode != 0:
-        die(
-            "external/Cytnx differs from the commit the index records:",
-            *git("diff", "--submodule=short", *cytnx).splitlines(),
-        )
-    untracked = [
+def untracked(directory, cwd=ROOT):
+    """Files under directory that git does not track, ignored ones included,
+    editor and Finder files aside."""
+    return [
         p
-        for p in git_paths("ls-files", "--others", "--", "include")
+        for p in git_paths("ls-files", "--others", "--", directory, cwd=cwd)
         if not any(
             fnmatch.fnmatchcase(os.path.basename(p), pat)
             for pat in EDITOR_AND_FINDER_FILES
         )
     ]
-    if untracked:
+
+
+def check_tree():
+    # The working tree against the index: a staged change of the pin passes,
+    # while a checkout at another commit and an edited file differ. Untracked
+    # files in Cytnx are checked below, under include/, which IWYU reads.
+    cytnx = ["--ignore-submodules=untracked", "--", "external/Cytnx"]
+    if run(["git", "diff", "--quiet", *cytnx]).returncode != 0:
         die(
-            "files under include/ are not tracked, and IWYU would read them:",
-            *untracked,
-            "add them or move them out of the tree first",
+            "external/Cytnx differs from the commit the index records:",
+            *git("diff", "--submodule=short", *cytnx).splitlines(),
         )
+    cytnx_untracked = [
+        f"external/Cytnx/{p}"
+        for p in untracked("include", cwd=ROOT / "external" / "Cytnx")
+    ]
+    for files, where in (
+        (untracked("include"), "include/"),
+        (cytnx_untracked, "external/Cytnx/include/"),
+    ):
+        if files:
+            die(
+                f"files under {where} are not tracked, and IWYU would read them:",
+                *files,
+                "add them or move them out of the tree first",
+            )
 
 
-def search_path():
-    return os.pathsep.join([os.environ.get("PATH", ""), *EXTRA_PATH])
-
-
-def searched():
-    return f"PATH, {', '.join(EXTRA_PATH[:-1])} or {EXTRA_PATH[-1]}"
-
-
-def find_executable(name, *message):
-    """The absolute path of the executable name, or a stop with message. A name
-    without a directory is looked up on search_path(); one with a directory is
-    taken as it is. IWYU runs in the build directory, where a relative path
-    means something else."""
-    found = shutil.which(name, path=search_path())
+def find_executable(name):
+    """The absolute path of name on PATH. IWYU runs in the build directory,
+    where a relative path means something else."""
+    found = shutil.which(name)
     if found is None:
-        die(*message)
+        die(f"{name} not found on PATH")
     return os.path.abspath(found)
 
 
 def configure():
     (BUILD / "compile_commands.json").unlink(missing_ok=True)
     shutil.rmtree(BUILD / "include", ignore_errors=True)
-    cmake = find_executable("cmake", f"cmake not found on {searched()}")
-    env = dict(os.environ, PATH=search_path())
-    result = run([cmake, "--preset", PRESET, "-B", str(BUILD)], env=env)
+    # The empty TCAPI_CLANG_TIDY keeps a clang-tidy left in the cache, as by a
+    # configure with brew-tidy, out of the generated build files.
+    command = [
+        find_executable("cmake"),
+        "--preset",
+        PRESET,
+        "-B",
+        str(BUILD),
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        "-DTCAPI_CLANG_TIDY=",
+    ]
+    result = run(command)
     if result.returncode != 0:
-        die(f"cmake --preset {PRESET} -B {BUILD} failed:", *result.stdout.splitlines())
+        die(f"cmake {' '.join(command[1:])} failed:", *result.stdout.splitlines())
     database = BUILD / "compile_commands.json"
     if not database.is_file():
         die(f"{database} was not written; the configure exported no compile commands")
     return database
 
 
+def resolve(directory, path):
+    """path, read from directory as a compile command reads it, made canonical."""
+    return os.path.realpath(os.path.join(directory, path))
+
+
 def dropped(arg, directory, source):
     """Whether a compile option is left out: the source itself, -c, and the
     warning options, which -w replaces (-Wp, -Wl and -Wa pass options on)."""
-    if arg == "-c" or os.path.realpath(os.path.join(directory, arg)) == source:
+    if arg == "-c" or resolve(directory, arg) == source:
         return True
     return arg.startswith("-W") and not arg.startswith(("-Wp,", "-Wl,", "-Wa,"))
 
 
 def compile_options(database):
-    """The directory the TCAPI sources compile in, and the options they all compile with."""
+    """The compiler of the TCAPI sources, the directory they compile in, and the
+    options they all compile with."""
     source_dir = os.path.realpath(ROOT / "source") + os.sep
     options = {}
     for entry in json.loads(database.read_text()):
         directory = entry["directory"]
-        file = os.path.realpath(os.path.join(directory, entry["file"]))
+        file = resolve(directory, entry["file"])
         if not file.startswith(source_dir):
             continue
         args = (
@@ -171,11 +194,11 @@ def compile_options(database):
                 next(rest, None)
             elif not dropped(arg, directory, file):
                 kept.append(arg)
-        options[os.path.relpath(file, ROOT)] = (directory, tuple(kept))
+        options[os.path.relpath(file, ROOT)] = (args[0], directory, tuple(kept))
     if not options:
         die(
             f"{database} lists no source under {ROOT / 'source'}",
-            f"the {PRESET} preset is expected to export the TCAPI target's compile commands",
+            "the configure is expected to export the TCAPI target's compile commands",
         )
     distinct = set(options.values())
     if len(distinct) > 1:
@@ -183,24 +206,79 @@ def compile_options(database):
         for value in distinct:
             sources = sorted(s for s, v in options.items() if v == value)
             details.append(
-                f"{', '.join(sources)}: {' '.join(value[1])} (in {value[0]})"
+                f"{', '.join(sources)}: {value[0]} {' '.join(value[2])} (in {value[1]})"
             )
         die(
             "TCAPI sources compile with different options, so no one set fits the headers:",
             *details,
         )
-    return distinct.pop()
+    compiler, directory, kept = distinct.pop()
+    if not any(arg.startswith("-std=") for arg in kept):
+        die(
+            f"the TCAPI sources in {database} compile with no -std option, so IWYU would",
+            f"parse the headers with its own default standard rather than {compiler}'s;",
+            "CMake leaves it out when the compiler's default meets the requirement, as",
+            f"GCC 16's does: delete {BUILD} and run again with CXX unset, so that the",
+            "configure takes the preset's default compiler",
+        )
+    return compiler, directory, kept
 
 
-def find_iwyu():
-    named = os.environ.get("IWYU")
-    if named:
-        return find_executable(named, f"IWYU={named} names no executable")
-    return find_executable(
-        "include-what-you-use",
-        f"include-what-you-use not found on {searched()}",
-        "install it with: brew install include-what-you-use, or set IWYU to it",
-    )
+def named_dirs(options, directory):
+    """The directories the options themselves name for the include search."""
+    dirs = set()
+    rest = iter(options)
+    for arg in rest:
+        for flag in INCLUDE_DIR_OPTIONS:
+            if arg == flag:
+                value = next(rest, "")
+                break
+            if arg.startswith(flag):
+                value = arg[len(flag) :]
+                break
+        else:
+            continue
+        if value:
+            dirs.add(resolve(directory, value))
+    return dirs
+
+
+def system_includes(compiler, directory, options):
+    """IWYU options that make its clang search the system include directories
+    the build's compiler searches for these options. Directories other than
+    framework directories keep their order relative to the builtin headers,
+    which stay IWYU's own; framework directories go to -iframework."""
+    builtin = run([compiler, "-print-file-name=include"], cwd=directory).stdout.strip()
+    builtin = resolve(directory, builtin) if builtin else ""
+    output = run(
+        [compiler, *options, "-x", "c++", "-E", "-v", os.devnull], cwd=directory
+    ).stdout.splitlines()
+    try:
+        start = output.index("#include <...> search starts here:") + 1
+        end = output.index("End of search list.", start)
+    except ValueError:
+        die(f"{compiler} -E -v reported no include search list")
+    named = named_dirs(options, directory)
+    flags = ["-nostdinc++", "-nostdlibinc"]
+    after_builtin = False
+    for line in output[start:end]:
+        entry = line.strip()
+        framework = entry.endswith(" (framework directory)")
+        path = entry[: -len(" (framework directory)")] if framework else entry
+        real = resolve(directory, path)
+        if real == builtin:
+            after_builtin = True
+        elif real not in named:
+            if framework:
+                flags += ["-iframework", path]
+            else:
+                flags += ["-idirafter" if after_builtin else "-isystem", path]
+    if not after_builtin:
+        die(
+            f"{compiler} -E -v did not list its builtin headers' directory, {builtin or '(none)'},",
+            "so IWYU cannot be given the directories around it in the same order",
+        )
+    return flags
 
 
 def iwyu_version(iwyu):
@@ -241,9 +319,14 @@ def main():
         print(__doc__.strip())
         return 0 if sys.argv[1] in ("-h", "--help") else 1
     check_tree()
-    iwyu = find_iwyu()
-    directory, options = compile_options(configure())
-    headers = git_paths("ls-files", "--", "include/tcapi")
+    iwyu = find_executable("include-what-you-use")
+    compiler, directory, options = compile_options(configure())
+    system = system_includes(compiler, directory, options)
+    # Run by hand, the script checks the working tree, which lacks a header
+    # deleted but not staged; under pre-commit the header is still there.
+    headers = [
+        h for h in git_paths("ls-files", "--", "include/tcapi") if (ROOT / h).exists()
+    ]
     with tempfile.TemporaryDirectory() as tmp:
         mapping = Path(tmp) / "mapping.imp"
         write_mapping(mapping)
@@ -262,6 +345,7 @@ def main():
             cmd = [
                 iwyu,
                 *options,
+                *system,
                 "-w",
                 "-x",
                 "c++-header",
@@ -282,7 +366,8 @@ def main():
         return 0
     version = iwyu_version(iwyu)
     print(
-        f"include-what-you-use {version}: {len(failed)} of {len(headers)} headers failed"
+        f"include-what-you-use {version}: {len(failed)} of {len(headers)} headers failed,"
+        f" with the options and standard library of {compiler}"
     )
     if version != CHECKED_VERSION:
         print(
