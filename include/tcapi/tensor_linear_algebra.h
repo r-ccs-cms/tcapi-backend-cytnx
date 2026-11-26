@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <vector>
 
-#include "tcapi/cytnx_tensor_traits.h"  // IWYU pragma: keep
+#include "tcapi/cytnx_tensor_traits.h"
 #include "tcapi/tensor_traits.h"
 
 namespace tcapi {

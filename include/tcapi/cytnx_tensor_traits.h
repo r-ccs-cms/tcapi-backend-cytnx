@@ -1,5 +1,10 @@
 #pragma once
 
+// Templates in tcapi headers such as read_only_getters.h name tensor_traits<TenT>
+// members in their declarations, so calling one with a CytnxTensor needs the
+// specializations below; IWYU does not see that need in those headers.
+// IWYU pragma: always_keep
+
 #include <cytnx.hpp>
 #include <tuple>
 #include <type_traits>

@@ -20,7 +20,7 @@
 #include <vector>
 
 #include "tcapi/construction_destruction.h"
-#include "tcapi/cytnx_tensor_traits.h"  // IWYU pragma: keep
+#include "tcapi/cytnx_tensor_traits.h"
 #include "tcapi/cytnx_typed_tensor.h"
 #include "tcapi/read_only_getters.h"
 #include "tcapi/tensor_linear_algebra.h"

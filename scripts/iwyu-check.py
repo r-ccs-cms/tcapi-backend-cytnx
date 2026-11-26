@@ -9,11 +9,10 @@ or cannot parse one. pre-commit runs it before each commit and each merge
 commit.
 
 The compile options come from a build the script configures itself, in
-build-iwyu with the brew-tidy preset: removing the database and the generated
-headers first and configuring on every run keeps them in step with
-CMakeLists.txt, the presets and the .h.in templates, and leaves every other
-build untouched. All TCAPI sources compile with one set of options, which the
-headers are analyzed with.
+build-iwyu with the brew-tidy preset, on every run; no other build is touched.
+It removes the database and the generated headers there first, so that a
+configure that does not write them leaves none behind to be read. All TCAPI
+sources compile with one set of options, which the headers are analyzed with.
 
 IWYU reads the working tree, which pre-commit has reduced to what is staged,
 except for files git does not track and for submodules. So the script first
@@ -21,9 +20,10 @@ stops when a file under include/ is not tracked, editor and Finder files (*~,
 *.swp, *.swo, #*#, .#*, .DS_Store) aside, or when external/Cytnx differs from
 the commit the index records.
 
-IWYU is $IWYU when that is set, and otherwise include-what-you-use from PATH,
-/opt/homebrew/bin or /usr/local/bin. The headers were made clean with IWYU
-0.27; another version may report headers nobody changed.
+IWYU is $IWYU when that is set and not empty, and otherwise
+include-what-you-use from PATH, /opt/homebrew/bin or /usr/local/bin. The
+headers were made clean with IWYU 0.27 on macOS; another IWYU version or
+another standard library may report headers nobody changed.
 """
 
 import fnmatch
@@ -43,7 +43,7 @@ PRESET = "brew-tidy"
 CHECKED_VERSION = "0.27"
 # A GUI git client's PATH lacks Homebrew, which the macOS toolchain file runs.
 EXTRA_PATH = ["/opt/homebrew/bin", "/usr/local/bin"]
-EDITOR_FILES = ["*~", "*.swp", "*.swo", "#*#", ".#*", ".DS_Store"]
+EDITOR_AND_FINDER_FILES = ["*~", "*.swp", "*.swo", "#*#", ".#*", ".DS_Store"]
 
 
 def die(message, *details):
@@ -83,21 +83,23 @@ def git_paths(command, *args, cwd=ROOT):
 
 
 def check_tree():
-    cytnx = git(
-        "status", "--porcelain", "--ignore-submodules=none", "--", "external/Cytnx"
-    )
-    if cytnx.strip():
+    # The working tree against the index: a staged change of the pin passes,
+    # while a checkout at another commit, an edited file and an untracked one
+    # all differ.
+    cytnx = ["--ignore-submodules=none", "--", "external/Cytnx"]
+    if run(["git", "diff", "--quiet", *cytnx]).returncode != 0:
         die(
             "external/Cytnx differs from the commit the index records:",
-            *cytnx.splitlines(),
+            *git("diff", "--submodule=short", *cytnx).splitlines(),
             "check out the recorded commit with: git submodule update external/Cytnx,",
-            "or stage the new one, and commit or undo changes inside it",
+            "or stage the one checked out, and commit or undo changes inside it",
         )
     untracked = [
         p
         for p in git_paths("ls-files", "--others", "--", "include")
         if not any(
-            fnmatch.fnmatchcase(os.path.basename(p), pat) for pat in EDITOR_FILES
+            fnmatch.fnmatchcase(os.path.basename(p), pat)
+            for pat in EDITOR_AND_FINDER_FILES
         )
     ]
     if untracked:
@@ -112,12 +114,16 @@ def search_path():
     return os.pathsep.join([os.environ.get("PATH", ""), *EXTRA_PATH])
 
 
+def searched():
+    return f"PATH, {', '.join(EXTRA_PATH[:-1])} or {EXTRA_PATH[-1]}"
+
+
 def configure():
     (BUILD / "compile_commands.json").unlink(missing_ok=True)
     shutil.rmtree(BUILD / "include", ignore_errors=True)
     cmake = shutil.which("cmake", path=search_path())
     if cmake is None:
-        die("cmake not found on PATH, /opt/homebrew/bin or /usr/local/bin")
+        die(f"cmake not found on {searched()}")
     env = dict(os.environ, PATH=search_path())
     result = run([cmake, "--preset", PRESET, "-B", str(BUILD)], env=env)
     if result.returncode != 0:
@@ -137,7 +143,7 @@ def dropped(arg, directory, source):
 
 
 def compile_options(database):
-    """The options all TCAPI sources compile with, and the directory they run in."""
+    """The directory the TCAPI sources compile in, and the options they all compile with."""
     source_dir = os.path.realpath(ROOT / "source") + os.sep
     options = {}
     for entry in json.loads(database.read_text()):
@@ -184,14 +190,16 @@ def find_iwyu():
         found = shutil.which(named)
         if found is None:
             die(f"IWYU={named} names no executable")
-        return found
-    found = shutil.which("include-what-you-use", path=search_path())
-    if found is None:
-        die(
-            "include-what-you-use not found on PATH, /opt/homebrew/bin or /usr/local/bin",
-            "install it with: brew install include-what-you-use, or set IWYU to it",
-        )
-    return found
+    else:
+        found = shutil.which("include-what-you-use", path=search_path())
+        if found is None:
+            die(
+                f"include-what-you-use not found on {searched()}",
+                "install it with: brew install include-what-you-use, or set IWYU to it",
+            )
+    # IWYU runs in the build directory, where a relative path means something
+    # else.
+    return os.path.abspath(found)
 
 
 def iwyu_version(iwyu):
@@ -248,8 +256,8 @@ def main():
         ]
 
         def check(header):
-            # -x c++-header, not c++: clang ignores #pragma once in a main file
-            # of any other kind, so an include cycle would parse it twice.
+            # -x c++-header, not c++: under -x c++, clang ignores #pragma once
+            # in the main file, so an include cycle would parse it twice.
             cmd = [
                 iwyu,
                 *options,

@@ -5,7 +5,7 @@
 #include <iterator>
 
 #include "tcapi/context_handle.h"
-#include "tcapi/cytnx_tensor_traits.h"  // IWYU pragma: keep
+#include "tcapi/cytnx_tensor_traits.h"
 #include "tcapi/read_only_getters.h"
 #include "tcapi/tensor_traits.h"
 

@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-#include "tcapi/cytnx_tensor_traits.h"  // IWYU pragma: keep
+#include "tcapi/cytnx_tensor_traits.h"
 #include "tcapi/cytnx_typed_tensor.h"
 // io_operations.h includes this file on its last line, so #pragma once skips
 // this include there; it lets the file compile on its own.

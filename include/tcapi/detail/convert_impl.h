@@ -7,7 +7,7 @@
 #include <type_traits>
 #include <utility>
 
-#include "tcapi/cytnx_tensor_traits.h"  // IWYU pragma: keep
+#include "tcapi/cytnx_tensor_traits.h"
 #include "tcapi/cytnx_typed_tensor.h"
 #include "tcapi/debugging.h"
 #include "tcapi/tensor_traits.h"

@@ -133,7 +133,5 @@ config	source/tensor_traits.cpp	-DTCAPICYTNX_USE_GESDD -std=gnu++20
 1	warning	source/miscellaneous.cpp	misc-include-cleaner	no header providing "tcapi::create_context" is directly included	template <> void create_context(CytnxContextHandle& ctx) {
 1	warning	source/miscellaneous.cpp	misc-include-cleaner	no header providing "tcapi::destroy_context" is directly included	template <> void destroy_context(CytnxContextHandle& ctx) {
 1	warning	source/tcapi_base.cpp	misc-include-cleaner	included header cytnx.hpp is not used directly	#include <cytnx.hpp>
-1	warning	source/tcapi_base.cpp	misc-include-cleaner	included header cytnx_tensor_traits.h is not used directly	#include "tcapi/cytnx_tensor_traits.h"
 1	warning	source/tcapi_base.cpp	misc-include-cleaner	included header tcapi.h is not used directly	#include "tcapi/tcapi.h"
 1	warning	source/tensor_traits.cpp	misc-include-cleaner	included header cytnx.hpp is not used directly	#include <cytnx.hpp>
-1	warning	source/tensor_traits.cpp	misc-include-cleaner	included header cytnx_tensor_traits.h is not used directly	#include "tcapi/cytnx_tensor_traits.h"
