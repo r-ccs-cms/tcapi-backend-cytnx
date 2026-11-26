@@ -11,9 +11,10 @@ each commit and each merge commit.
 cmake and include-what-you-use are taken from PATH.
 
 The compile options come from a build the script configures itself, in
-build-iwyu with the brew preset, on every run; no other build is touched. It
-removes the database and the generated headers there first, so that a
-configure that does not write them leaves none behind to be read. All TCAPI
+build-iwyu with the brew preset and an empty CMake cache, on every run; no
+other build is touched. It removes the database and the generated headers
+there first, so that a configure that does not write them leaves none behind
+to be read. All TCAPI
 sources compile with one set of options, which the headers are analyzed with.
 IWYU is also given the system include directories the build's compiler reports
 for those options, so that it reads the standard library the build uses rather
@@ -22,9 +23,10 @@ than one of its own.
 IWYU reads the working tree, which pre-commit has reduced to what is staged,
 except for files git does not track and for submodules. So the script first
 stops when a file under include/ or external/Cytnx/include/ is not tracked,
-editor and Finder files (*~, *.swp, *.swo, #*#, .#*, .DS_Store) aside, or when
+editor and Finder files (*~, *.swp, *.swo, #*#, .#*, .DS_Store) aside, when
 external/Cytnx is checked out at a commit other than the one the index records
-or has edited files.
+or has edited files, or when a sparse checkout leaves out a header under
+include/tcapi/.
 
 The headers were made clean with IWYU 0.27 against Apple clang's libc++;
 another IWYU version or another standard library may report headers nobody
@@ -147,6 +149,17 @@ def check_tree():
                 *files,
                 "add them or move them out of the tree first",
             )
+    # -t tags with S each file a sparse checkout leaves out of the working tree.
+    excluded = [
+        t[2:]
+        for t in git_paths("ls-files", "-t", "--", "include/tcapi")
+        if t.startswith("S ")
+    ]
+    if excluded:
+        die(
+            "the sparse checkout leaves out headers under include/tcapi/, which IWYU cannot read:",
+            *excluded,
+        )
 
 
 def find_executable(name):
@@ -161,16 +174,17 @@ def find_executable(name):
 def configure():
     (BUILD / "compile_commands.json").unlink(missing_ok=True)
     shutil.rmtree(BUILD / "include", ignore_errors=True)
-    # The empty TCAPI_CLANG_TIDY keeps a clang-tidy left in build-iwyu's cache
-    # out of the generated build files.
+    # --fresh starts from an empty cache, so that a value an earlier run left
+    # there, such as the default of an option() that a commit changes, does
+    # not outlive the change. It keeps the dependencies already downloaded.
     command = [
         find_executable("cmake"),
+        "--fresh",
         "--preset",
         PRESET,
         "-B",
         str(BUILD),
         "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-        "-DTCAPI_CLANG_TIDY=",
     ]
     run_checked(command, f"cmake {' '.join(command[1:])}", env=env_without_git_locals())
     database = BUILD / "compile_commands.json"
@@ -240,8 +254,8 @@ def compile_options(database):
             f"the TCAPI sources in {database} compile with no -std option, so IWYU would",
             f"parse the headers with its own default standard rather than {compiler}'s;",
             "CMake leaves it out when the compiler's default meets the requirement, as",
-            f"GCC 16's does: delete {BUILD} and run again with CXX unset, so that the",
-            "configure takes the preset's default compiler",
+            "GCC 16's does: run again with CXX unset, so that the configure takes the",
+            "preset's default compiler",
         )
     return compiler, directory, kept
 
