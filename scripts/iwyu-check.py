@@ -75,9 +75,11 @@ def run(args, cwd=ROOT, env=None):
     )
 
 
-def run_checked(args, shown, ok=(0,), cwd=ROOT, env=None):
+def run_checked(args, shown=None, ok=(0,), cwd=ROOT, env=None):
     """run(args), stopping with its output when it exits with a code not in ok;
-    shown is the command as the message names it."""
+    shown is the command as the message names it, args joined by default."""
+    if shown is None:
+        shown = " ".join(args)
     result = run(args, cwd=cwd, env=env)
     if result.returncode not in ok:
         die(f"{shown} failed:", *result.stdout.splitlines())
@@ -95,7 +97,7 @@ def env_without_git_locals():
 
 def git(*args, cwd=ROOT):
     env = env_without_git_locals() if cwd != ROOT else None
-    return run_checked(["git", *args], f"git {' '.join(args)}", cwd=cwd, env=env).stdout
+    return run_checked(["git", *args], cwd=cwd, env=env).stdout
 
 
 def git_paths(command, *args, cwd=ROOT):
@@ -122,7 +124,7 @@ def check_tree():
     cytnx = ["--ignore-submodules=untracked", "--", "external/Cytnx"]
     # --quiet exits with 1 for a difference; any other nonzero code is a failure.
     diff = ["diff", "--quiet", *cytnx]
-    if run_checked(["git", *diff], f"git {' '.join(diff)}", ok=(0, 1)).returncode:
+    if run_checked(["git", *diff], ok=(0, 1)).returncode:
         die(
             "external/Cytnx differs from the commit the index records:",
             *git("diff", "--submodule=short", *cytnx).splitlines(),
@@ -267,9 +269,11 @@ def system_includes(compiler, directory, options):
     the build's compiler searches for these options. Directories other than
     framework directories keep their order relative to the builtin headers,
     which stay IWYU's own; framework directories go to -iframework."""
-    builtin = run([compiler, "-print-file-name=include"], cwd=directory).stdout.strip()
+    builtin = run_checked(
+        [compiler, "-print-file-name=include"], cwd=directory
+    ).stdout.strip()
     builtin = resolve(directory, builtin) if builtin else ""
-    output = run(
+    output = run_checked(
         [compiler, *options, "-x", "c++", "-E", "-v", os.devnull], cwd=directory
     ).stdout.splitlines()
     try:
@@ -335,8 +339,10 @@ def report(output):
 
 def main():
     if len(sys.argv) > 1:
-        print(__doc__.strip())
-        return 0 if sys.argv[1] in ("-h", "--help") else 1
+        if sys.argv[1] in ("-h", "--help"):
+            print(__doc__.strip())
+            return 0
+        die(f"unexpected argument {sys.argv[1]}", "run with --help for usage")
     check_tree()
     iwyu = find_executable("include-what-you-use")
     compiler, directory, options = compile_options(configure())
