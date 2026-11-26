@@ -20,10 +20,11 @@ stops when a file under include/ is not tracked, editor and Finder files (*~,
 *.swp, *.swo, #*#, .#*, .DS_Store) aside, or when external/Cytnx differs from
 the commit the index records.
 
-IWYU is $IWYU when that is set and not empty, and otherwise
-include-what-you-use from PATH, /opt/homebrew/bin or /usr/local/bin. The
-headers were made clean with IWYU 0.27 on macOS; another IWYU version or
-another standard library may report headers nobody changed.
+IWYU is the program $IWYU names when that is set and not empty, and
+include-what-you-use otherwise; a name without a directory is looked up on
+PATH, /opt/homebrew/bin and /usr/local/bin. The headers were made clean with
+IWYU 0.27 on macOS; another IWYU version or another standard library may report
+headers nobody changed.
 """
 
 import fnmatch
@@ -91,8 +92,6 @@ def check_tree():
         die(
             "external/Cytnx differs from the commit the index records:",
             *git("diff", "--submodule=short", *cytnx).splitlines(),
-            "check out the recorded commit with: git submodule update external/Cytnx,",
-            "or stage the one checked out, and commit or undo changes inside it",
         )
     untracked = [
         p
@@ -118,12 +117,21 @@ def searched():
     return f"PATH, {', '.join(EXTRA_PATH[:-1])} or {EXTRA_PATH[-1]}"
 
 
+def find_executable(name, *message):
+    """The absolute path of the executable name, or a stop with message. A name
+    without a directory is looked up on search_path(); one with a directory is
+    taken as it is. IWYU runs in the build directory, where a relative path
+    means something else."""
+    found = shutil.which(name, path=search_path())
+    if found is None:
+        die(*message)
+    return os.path.abspath(found)
+
+
 def configure():
     (BUILD / "compile_commands.json").unlink(missing_ok=True)
     shutil.rmtree(BUILD / "include", ignore_errors=True)
-    cmake = shutil.which("cmake", path=search_path())
-    if cmake is None:
-        die(f"cmake not found on {searched()}")
+    cmake = find_executable("cmake", f"cmake not found on {searched()}")
     env = dict(os.environ, PATH=search_path())
     result = run([cmake, "--preset", PRESET, "-B", str(BUILD)], env=env)
     if result.returncode != 0:
@@ -187,19 +195,12 @@ def compile_options(database):
 def find_iwyu():
     named = os.environ.get("IWYU")
     if named:
-        found = shutil.which(named)
-        if found is None:
-            die(f"IWYU={named} names no executable")
-    else:
-        found = shutil.which("include-what-you-use", path=search_path())
-        if found is None:
-            die(
-                f"include-what-you-use not found on {searched()}",
-                "install it with: brew install include-what-you-use, or set IWYU to it",
-            )
-    # IWYU runs in the build directory, where a relative path means something
-    # else.
-    return os.path.abspath(found)
+        return find_executable(named, f"IWYU={named} names no executable")
+    return find_executable(
+        "include-what-you-use",
+        f"include-what-you-use not found on {searched()}",
+        "install it with: brew install include-what-you-use, or set IWYU to it",
+    )
 
 
 def iwyu_version(iwyu):
