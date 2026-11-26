@@ -20,7 +20,7 @@ Install [include-what-you-use](#include-what-you-use) as well, by any means that
 pre-commit validate-config .pre-commit-config.yaml && GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0= pre-commit install
 ```
 
-The hooks are then in `.git/hooks`, and git still runs the hooks in the `core.hooksPath` directory. They run only if that directory's hooks run the ones in `.git/hooks`. If yours do not, run `scripts/iwyu-check.py` yourself before committing and `scripts/tidy-count.sh --check` before pushing.
+The hooks are then in `.git/hooks`, and git still runs the hooks in the `core.hooksPath` directory. They run only if that directory's hooks run the ones in `.git/hooks`. If yours do not, run `pre-commit run iwyu` before committing, which sets unstaged changes aside as the hook does, and `scripts/tidy-count.sh --check` before pushing.
 
 ## clang-tidy
 

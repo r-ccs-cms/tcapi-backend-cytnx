@@ -264,11 +264,27 @@ def named_dirs(options, directory):
     return dirs
 
 
+def without_isystem(options):
+    """The options without their -isystem directories, which system_includes
+    gives IWYU again in the order the build's compiler searches them."""
+    kept = []
+    rest = iter(options)
+    for arg in rest:
+        if arg == "-isystem":
+            next(rest, None)
+        else:
+            kept.append(arg)
+    return kept
+
+
 def system_includes(compiler, directory, options):
-    """IWYU options that make its clang search the system include directories
-    the build's compiler searches for these options. Directories other than
-    framework directories keep their order relative to the builtin headers,
-    which stay IWYU's own; framework directories go to -iframework."""
+    """IWYU options that, after without_isystem(options), make its clang search
+    the system include directories the build's compiler searches for these
+    options, in the same order. The -isystem directories of the options are
+    among them, since the compiler can search one of its own, such as
+    /usr/local/include, before those. Directories other than framework
+    directories keep their order relative to the builtin headers, which stay
+    IWYU's own; framework directories go to -iframework."""
     builtin = run_checked(
         [compiler, "-print-file-name=include"], cwd=directory
     ).stdout.strip()
@@ -281,7 +297,7 @@ def system_includes(compiler, directory, options):
         end = output.index("End of search list.", start)
     except ValueError:
         die(f"{compiler} -E -v reported no include search list")
-    named = named_dirs(options, directory)
+    named = named_dirs(without_isystem(options), directory)
     flags = ["-nostdinc++", "-nostdlibinc"]
     after_builtin = False
     for line in output[start:end]:
@@ -372,7 +388,7 @@ def main():
             # in the main file, so an include cycle would parse it twice.
             cmd = [
                 iwyu,
-                *options,
+                *without_isystem(options),
                 *system,
                 "-w",
                 "-x",
