@@ -348,9 +348,12 @@ def main():
     compiler, directory, options = compile_options(configure())
     system = system_includes(compiler, directory, options)
     # Run by hand, the script checks the working tree, which lacks a header
-    # deleted but not staged; under pre-commit the header is still there.
+    # deleted but not staged; under pre-commit the header is still there. A
+    # symbolic link whose target is missing is kept, so that IWYU fails on it.
     headers = [
-        h for h in git_paths("ls-files", "--", "include/tcapi") if (ROOT / h).exists()
+        h
+        for h in git_paths("ls-files", "--", "include/tcapi")
+        if os.path.lexists(ROOT / h)
     ]
     with tempfile.TemporaryDirectory() as tmp:
         mapping = Path(tmp) / "mapping.imp"
