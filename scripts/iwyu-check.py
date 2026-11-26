@@ -298,11 +298,12 @@ def without_isystem(options):
 def system_includes(compiler, directory, options):
     """IWYU options that, after without_isystem(options), make its clang search
     the system include directories the build's compiler searches for these
-    options, in the same order. The -isystem directories of the options are
-    among them, since the compiler can search one of its own, such as
-    /usr/local/include, before those. Directories other than framework
-    directories keep their order relative to the builtin headers, which stay
-    IWYU's own; framework directories go to -iframework."""
+    options, those other than framework directories in the same order. The
+    -isystem directories of the options are among them, since the compiler can
+    search one of its own, such as /usr/local/include, before those. The
+    builtin headers stay IWYU's own; framework directories go to -iframework,
+    which IWYU's clang searches before its builtin headers, where the build's
+    compiler searches them after the system directories."""
     builtin = run_checked(
         [compiler, "-print-file-name=include"], cwd=directory
     ).stdout.strip()
