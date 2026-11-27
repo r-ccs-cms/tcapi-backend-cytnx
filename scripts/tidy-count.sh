@@ -235,10 +235,10 @@ tidy_path=$(abspath_file "$tidy_path")
 runner=$(abspath_file "$runner")
 version_out=$("$tidy_path" --version 2>&1) || die "cannot run $tidy_path --version:" "$version_out"
 version=$(printf '%s\n' "$version_out" | awk 'tolower($0) ~ /version/ { sub(/^[ \t]+/, ""); print; exit }')
-# The repository's baseline is written and checked only by a clang-tidy whose
-# version line is the pinned wheel's, so that a clang-tidy on PATH or in
-# CLANG_TIDY printing another line cannot write it into the baseline, nor pass
-# against a baseline such a clang-tidy wrote.
+# When FILE is the repository's baseline, as is_default above tells, --check
+# and --update stop unless clang-tidy prints the pinned version line, so that
+# a clang-tidy on PATH or in CLANG_TIDY printing another line neither writes
+# it into the baseline nor passes against a baseline such a clang-tidy wrote.
 if [[ -n $is_default && $mode != count && $version != "LLVM version $pin_release" ]]; then
   details=("running: $version ($tidy_path)" "pinned:  LLVM version $pin_release")
   [[ -z ${CLANG_TIDY:-} ]] || details+=("CLANG_TIDY selected this clang-tidy; unset it to take clang-tidy from PATH")
@@ -357,7 +357,7 @@ if [[ $mode == check ]]; then
       die "baseline $baseline not found" "write it with: $update_cmd"
     fi
     die "baseline $baseline not found" \
-      "write it from the base commit with: $self --update --baseline $baseline --root <base worktree> <its build directory>"
+      "write it from the base commit with: $self --update --baseline $(printf %q "$baseline") --root <base worktree> <its build directory>"
   fi
   base_version=$(awk -F'\t' '$1 == "version" { print $2; exit }' <"$baseline")
   if [[ $base_version != "$version" ]]; then
