@@ -29,6 +29,8 @@ The repository records every warning clang-tidy reports in `.clang-tidy-baseline
 
 ### Checking and updating the baseline
 
+With the clang-tidy `.pre-commit-config.yaml` pins on `PATH`, as the commands after this block show how to arrange:
+
 ```bash
 scripts/tidy-count.sh            # count the warnings per check and per file
 scripts/tidy-count.sh --check    # compare them with .clang-tidy-baseline

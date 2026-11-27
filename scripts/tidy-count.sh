@@ -155,6 +155,8 @@ while (($#)); do
 done
 # The --root and BUILD_DIR given, repeated in the --update a message suggests.
 rerun=
+# This script as a command a message suggests, quoted as the arguments are.
+self=$(printf %q "$0")
 [[ -z $root ]] || rerun+=" --root $(printf %q "$root")"
 [[ -z $build_arg ]] || rerun+=" $(printf %q "$build_arg")"
 
@@ -203,11 +205,11 @@ pin_release=${BASH_REMATCH[0]}
 # How to run with the pinned clang-tidy, which the repository's baseline takes;
 # env -u keeps an exported CLANG_TIDY from replacing it, as in the hook.
 with_pin="env -u CLANG_TIDY uv run --no-project --with clang-tidy==$pin"
-update_cmd="$with_pin $0 --update$rerun"
+update_cmd="$with_pin $self --update$rerun"
 pinned_hint=(
   "the pre-push hook runs clang-tidy $pin, which .pre-commit-config.yaml pins; run with it by hand as"
   "  pre-commit run clang-tidy-baseline --hook-stage manual    (--check)"
-  "  $with_pin $0 ...    (any mode)"
+  "  $with_pin $self ...    (any mode)"
 )
 # What to do about a missing clang-tidy: the pinned one for the repository's
 # baseline, any for another baseline, as in the fallback comparison.
@@ -341,8 +343,8 @@ and python3 on PATH):
   git -C <dir> submodule update --init --recursive
   configure <dir> and this tree the same way, with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
   put the clang-tidy to use first on PATH, or set CLANG_TIDY to it
-  $0 --update --baseline <file> --root <dir> <dir's build directory>
-  $0 --check --baseline <file> <this tree's build directory>
+  $self --update --baseline <file> --root <dir> <dir's build directory>
+  $self --check --baseline <file> <this tree's build directory>
 CONTRIBUTING.md describes this. To push without the check: SKIP=clang-tidy-baseline git push
 EOF
 }
@@ -355,7 +357,7 @@ if [[ $mode == check ]]; then
       die "baseline $baseline not found" "write it with: $update_cmd"
     fi
     die "baseline $baseline not found" \
-      "write it from the base commit with: $0 --update --baseline $baseline --root <base worktree> <its build directory>"
+      "write it from the base commit with: $self --update --baseline $baseline --root <base worktree> <its build directory>"
   fi
   base_version=$(awk -F'\t' '$1 == "version" { print $2; exit }' <"$baseline")
   if [[ $base_version != "$version" ]]; then
