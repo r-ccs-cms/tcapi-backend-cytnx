@@ -7,14 +7,19 @@ Usage: scripts/system_includes.py --root DIR DATABASE
 DATABASE is a compile_commands.json and DIR the source tree it was configured
 from. Every TCAPI source in it, those under DIR/source, must compile with one
 compiler, in one directory, with one set of options. The script asks that
-compiler for its include search list under those options, and prints, one per
-line, the options that make a clang-based tool search the same system
-directories: -nostdinc++ -nostdlibinc, then each directory as -isystem,
--idirafter or -iframework. A tool built apart from the system, such as the
+compiler for its include search list under those options, and prints, one
+argument per line, the options that make a clang-based tool search the same
+system directories: -nostdinc++ -nostdlibinc, then each directory as
+-isystem, -idirafter or -iframework followed by the directory on the next
+line. A tool built apart from the system, such as the
 clang-tidy wheel from PyPI or include-what-you-use from nixpkgs, does not
 otherwise find the standard library the build uses on macOS. Directories the
-options already pass with -isystem are left out of the output, since a tool
-that runs the compile commands keeps those options.
+options already pass as `-isystem <dir>` are left out of the output, since a
+tool that runs the compile commands keeps those options. The tool, given the
+output after the commands' own options, then searches those directories
+before the printed ones, where the compiler can search one of its own, such
+as /usr/local/include, before them: the directories are the compiler's, their
+order not entirely.
 
 scripts/iwyu-check.py imports these functions, and scripts/tidy-count.sh runs
 this script.
@@ -129,37 +134,28 @@ def compile_options(database, root):
     return distinct.pop()
 
 
-def named_dirs(options, directory):
-    """The directories the options themselves name for the include search, in
-    the forms INCLUDE_DIR_OPTIONS and JOINED_INCLUDE_DIR_OPTIONS describe."""
+def named_dirs(
+    options,
+    directory,
+    separate=INCLUDE_DIR_OPTIONS,
+    joined=JOINED_INCLUDE_DIR_OPTIONS,
+):
+    """The directories the options themselves name for the include search,
+    with the options in separate taking the directory as their next argument
+    and those in joined also as a suffix, as INCLUDE_DIR_OPTIONS and
+    JOINED_INCLUDE_DIR_OPTIONS describe."""
     dirs = set()
     rest = iter(options)
     for arg in rest:
-        if arg in INCLUDE_DIR_OPTIONS:
+        if arg in separate:
             value = next(rest, "")
         else:
             value = next(
-                (
-                    arg[len(f) :]
-                    for f in JOINED_INCLUDE_DIR_OPTIONS
-                    if arg.startswith(f)
-                ),
+                (arg[len(f) :] for f in joined if arg.startswith(f)),
                 "",
             )
         if value:
             dirs.add(resolve(directory, value))
-    return dirs
-
-
-def isystem_dirs(options, directory):
-    """The directories the options pass with -isystem."""
-    dirs = set()
-    rest = iter(options)
-    for arg in rest:
-        if arg == "-isystem":
-            value = next(rest, "")
-            if value:
-                dirs.add(resolve(directory, value))
     return dirs
 
 
@@ -234,16 +230,15 @@ def main():
         die(f"compilation database {database} not found")
     compiler, directory, options = compile_options(database, root)
     flags = system_includes(compiler, directory, options)
-    # A tool running the compile commands keeps their -isystem options, so
-    # their directories are not given to it a second time.
-    passed = isystem_dirs(options, directory)
+    # A tool running the compile commands keeps their `-isystem <dir>`
+    # options, so those directories are not given to it a second time.
+    passed = named_dirs(options, directory, ("-isystem",), ())
     out = flags[:2]
     pairs = iter(flags[2:])
     for option in pairs:
         path = next(pairs)
-        if option == "-isystem" and resolve(directory, path) in passed:
-            continue
-        out += [option, path]
+        if resolve(directory, path) not in passed:
+            out += [option, path]
     print("\n".join(out))
     return 0
 

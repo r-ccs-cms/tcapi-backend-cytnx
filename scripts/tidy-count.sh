@@ -14,25 +14,27 @@
 #              nonzero on any difference
 #
 # DIR is the source tree to analyze (default: the repository holding this
-# script), BUILD_DIR a CMake build directory configured from DIR with
-# CMAKE_EXPORT_COMPILE_COMMANDS=ON (default: DIR/build-tidy, which
-# `cmake --preset brew-tidy` configures with Homebrew's dependencies), and FILE
-# the baseline (default: .clang-tidy-baseline in the repository holding this
-# script).
+# script), BUILD_DIR a CMake build directory configured from DIR (default:
+# DIR/build-tidy, which `cmake --preset brew-tidy` configures with Homebrew's
+# dependencies), and FILE the baseline (default: .clang-tidy-baseline in the
+# repository holding this script).
 #
 # clang-tidy is $CLANG_TIDY, else clang-tidy on PATH, and run-clang-tidy is
 # taken from clang-tidy's own directory, under that name or as
 # run-clang-tidy.py, the name the PyPI clang-tidy wheel gives it, else from
 # PATH. The baseline records clang-tidy's version, and .pre-commit-config.yaml
 # pins the PyPI wheel of that version, which the pre-push hook installs; with
-# the repository's baseline, --check and --update stop unless clang-tidy is
-# that version. Run with it by hand as
+# the repository's baseline, --check and --update stop unless clang-tidy's
+# version line is `LLVM version <pin>`, the line that wheel prints. Run with it
+# by hand as
 #   pre-commit run clang-tidy-baseline --hook-stage manual    (--check)
 #   uv run --no-project --with clang-tidy==<pin> scripts/tidy-count.sh ...
 # clang-tidy is also given the system include directories the build's compiler
-# searches (see scripts/system_includes.py): a clang-tidy built apart from the
-# system, as that wheel is, does not otherwise find the standard library the
-# build uses on macOS.
+# searches (see scripts/system_includes.py, which the script runs with python3
+# from PATH, and which stops unless every TCAPI source compiles with one
+# compiler, in one directory, with one set of options): a clang-tidy built
+# apart from the system, as that wheel is, does not otherwise find the
+# standard library the build uses on macOS.
 #
 # The build log is not a usable count: an incremental build re-runs clang-tidy
 # only on the sources it recompiles, and the compiler's own -W warnings are
@@ -173,7 +175,7 @@ if [[ $baseline -ef $default_baseline ]] \
   is_default=1
 fi
 [[ ! -d $baseline ]] || die "baseline $baseline is a directory; give the path of a file"
-configure_hint="configure it with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON, as: cmake --preset brew-tidy"
+configure_hint="configure it, as with: cmake --preset brew-tidy"
 build_arg=${build_arg:-$root/build-tidy}
 [[ -d $build_arg ]] || die "build directory $build_arg not found" "$configure_hint"
 build=$(abspath "$build_arg")
@@ -191,8 +193,10 @@ pins=$(awk '{
 }' "$config" 2>/dev/null) || die "cannot read $config, which pins the clang-tidy version"
 [[ -n $pins ]] || die "$config pins no clang-tidy version" \
   "the clang-tidy-baseline hook names it as a clang-tidy==<version> requirement"
-[[ $pins != *$'\n'* ]] || die "$config pins more than one clang-tidy version:" "$pins"
+[[ $pins != *$'\n'* ]] || die "$config names more than one clang-tidy==<version> requirement:" "$pins"
 pin=$pins
+# How to rewrite the repository's baseline, which takes the pinned clang-tidy.
+update_cmd="uv run --no-project --with clang-tidy==$pin $0 --update$rerun"
 pinned_hint=(
   "the pre-push hook runs clang-tidy $pin, which .pre-commit-config.yaml pins; run with it by hand as"
   "  pre-commit run clang-tidy-baseline --hook-stage manual    (--check)"
@@ -215,13 +219,14 @@ tidy_path=$(abspath_file "$tidy_path")
 runner=$(abspath_file "$runner")
 version_out=$("$tidy_path" --version 2>&1) || die "cannot run $tidy_path --version:" "$version_out"
 version=$(printf '%s\n' "$version_out" | awk 'tolower($0) ~ /version/ { sub(/^[ \t]+/, ""); print; exit }')
-# The repository's baseline is written and checked with the pinned clang-tidy
-# only, so that a clang-tidy on PATH or in CLANG_TIDY cannot write another
-# version into it, nor pass against a baseline that version wrote.
+# The repository's baseline is written and checked only by a clang-tidy whose
+# version line is the pinned wheel's, so that a clang-tidy on PATH or in
+# CLANG_TIDY printing another line cannot write it into the baseline, nor pass
+# against a baseline such a clang-tidy wrote.
 if [[ -n $is_default && $mode != count && $version != "LLVM version $pin" ]]; then
   details=("running: $version ($tidy_path)" "pinned:  LLVM version $pin")
   [[ -z ${CLANG_TIDY:-} ]] || details+=("CLANG_TIDY selected this clang-tidy; unset it to take clang-tidy from PATH")
-  die "--$mode with $baseline needs the pinned clang-tidy" "${details[@]}" "${pinned_hint[@]}"
+  die "--$mode with $baseline needs a clang-tidy printing the pinned version line" "${details[@]}" "${pinned_hint[@]}"
 fi
 
 work=$(mktemp -d)
@@ -332,7 +337,7 @@ EOF
 if [[ $mode == check ]]; then
   if [[ ! -f $baseline ]]; then
     if [[ -n $is_default ]]; then
-      die "baseline $baseline not found" "write it with: $0 --update$rerun"
+      die "baseline $baseline not found" "write it with: $update_cmd"
     fi
     die "baseline $baseline not found" \
       "write it from the base commit with: $0 --update --baseline $baseline --root <base worktree> <its build directory>"
@@ -341,10 +346,11 @@ if [[ $mode == check ]]; then
   if [[ $base_version != "$version" ]]; then
     printf 'error: clang-tidy version differs from the baseline; nothing was compared\n' >&2
     printf '  baseline: %s\n  running:  %s\n' "$base_version" "$version" >&2
-    # The running clang-tidy is the pinned one here, so the baseline is stale.
     if [[ -n $is_default ]]; then
-      printf '%s pins clang-tidy %s; rewrite the baseline with it:\n  uv run --no-project --with clang-tidy==%s %s --update%s\n' \
-        "$config" "$pin" "$pin" "$0" "$rerun" >&2
+      # The pin check above let only the pinned version line through, so
+      # the baseline is stale.
+      printf '%s pins clang-tidy %s; rewrite the baseline with it:\n  %s\n' \
+        "$config" "$pin" "$update_cmd" >&2
       exit 1
     fi
     fallback_hint
@@ -357,7 +363,7 @@ fi
 if [[ ${PRE_COMMIT:-} == 1 && -n ${PRE_COMMIT_REMOTE_NAME:-} ]]; then
   [[ -n ${PRE_COMMIT_TO_REF:-} ]] \
     || die "pre-commit did not say which commit is pushed, as for a push that reaches a root commit" \
-      "run $0 --check by hand, then push with SKIP=clang-tidy-baseline"
+      "run pre-commit run clang-tidy-baseline --hook-stage manual, then push with SKIP=clang-tidy-baseline"
   # A pushed annotated tag arrives as the tag object; compare the commit.
   pushed=$(git -C "$root" rev-parse "$PRE_COMMIT_TO_REF^{commit}")
   [[ $pushed == "$(git -C "$root" rev-parse HEAD)" ]] \
@@ -466,11 +472,11 @@ nsources=$(count_lines "$work/db-sources")
 ((nsources > 0)) || die "no source under $root/source is in $build/compile_commands.json"
 
 # The options that make clang-tidy search the system include directories the
-# build's compiler searches, one per line; see the header.
+# build's compiler searches, one argument per line; see the header.
 command -v python3 >/dev/null || die "python3 not found on PATH" \
   "it runs scripts/system_includes.py, which finds the build compiler's system include directories"
-sysinc=$(python3 "$script_repo/scripts/system_includes.py" --root "$root" "$build/compile_commands.json" 2>&1) \
-  || die "could not find the system include directories of the TCAPI sources' compiler:" "$sysinc"
+sysinc=$(python3 "$script_repo/scripts/system_includes.py" --root "$root" "$build/compile_commands.json" 2>"$work/sysinc.err") \
+  || die "could not find the system include directories of the TCAPI sources' compiler:" "$(cat "$work/sysinc.err")"
 extra_args=()
 while IFS= read -r flag; do
   extra_args+=("-extra-arg=$flag")
@@ -889,7 +895,7 @@ case $mode in
     if [[ -n $diff ]]; then
       printf 'error: clang-tidy results differ from %s:\n%s\n' "$baseline" "$diff" >&2
       if [[ -n $is_default ]]; then
-        printf 'If the change is intended, run %s --update%s and commit the baseline;\n' "$0" "$rerun" >&2
+        printf 'If the change is intended, run %s and commit the baseline;\n' "$update_cmd" >&2
         printf 'the pull request explains every key whose count rises.\n' >&2
       else
         printf 'This compared with %s, not the repository'"'"'s baseline. Explain every key\n' "$baseline" >&2
