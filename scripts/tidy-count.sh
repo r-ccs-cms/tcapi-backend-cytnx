@@ -14,11 +14,25 @@
 #              nonzero on any difference
 #
 # DIR is the source tree to analyze (default: the repository holding this
-# script), BUILD_DIR a CMake build directory configured from DIR (default:
-# DIR/build-tidy, which `cmake --preset brew-tidy` creates), and FILE the
-# baseline (default: .clang-tidy-baseline in the repository holding this
-# script). The clang-tidy binary is taken from $CLANG_TIDY, else from
-# TCAPI_CLANG_TIDY in BUILD_DIR's cache, else from PATH.
+# script), BUILD_DIR a CMake build directory configured from DIR with
+# CMAKE_EXPORT_COMPILE_COMMANDS=ON (default: DIR/build-tidy, which
+# `cmake --preset brew-tidy` configures with Homebrew's dependencies), and FILE
+# the baseline (default: .clang-tidy-baseline in the repository holding this
+# script).
+#
+# clang-tidy is $CLANG_TIDY, else clang-tidy on PATH, and run-clang-tidy is
+# taken from clang-tidy's own directory, under that name or as
+# run-clang-tidy.py, the name the PyPI clang-tidy wheel gives it, else from
+# PATH. The baseline records clang-tidy's version, and .pre-commit-config.yaml
+# pins the PyPI wheel of that version, which the pre-push hook installs; with
+# the repository's baseline, --check and --update stop unless clang-tidy is
+# that version. Run with it by hand as
+#   pre-commit run clang-tidy-baseline --hook-stage manual    (--check)
+#   uv run --no-project --with clang-tidy==<pin> scripts/tidy-count.sh ...
+# clang-tidy is also given the system include directories the build's compiler
+# searches (see scripts/system_includes.py): a clang-tidy built apart from the
+# system, as that wheel is, does not otherwise find the standard library the
+# build uses on macOS.
 #
 # The build log is not a usable count: an incremental build re-runs clang-tidy
 # only on the sources it recompiles, and the compiler's own -W warnings are
@@ -159,28 +173,56 @@ if [[ $baseline -ef $default_baseline ]] \
   is_default=1
 fi
 [[ ! -d $baseline ]] || die "baseline $baseline is a directory; give the path of a file"
+configure_hint="configure it with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON, as: cmake --preset brew-tidy"
 build_arg=${build_arg:-$root/build-tidy}
-[[ -d $build_arg ]] \
-  || die "build directory $build_arg not found" "configure it with: cmake --preset brew-tidy"
+[[ -d $build_arg ]] || die "build directory $build_arg not found" "$configure_hint"
 build=$(abspath "$build_arg")
-[[ -f $build/CMakeCache.txt ]] \
-  || die "$build is not a CMake build directory" "configure it with: cmake --preset brew-tidy"
+[[ -f $build/CMakeCache.txt ]] || die "$build is not a CMake build directory" "$configure_hint"
 
-tidy=${CLANG_TIDY:-}
-if [[ -z $tidy ]]; then
-  tidy=$(cache_value TCAPI_CLANG_TIDY)
-fi
-tidy=${tidy:-clang-tidy}
+# The clang-tidy version .pre-commit-config.yaml pins, from its one
+# clang-tidy==<version> requirement outside comments.
+config=$script_repo/.pre-commit-config.yaml
+pins=$(awk '{
+  sub(/#.*/, "")
+  while (match($0, /clang-tidy==[0-9][0-9A-Za-z.]*/)) {
+    print substr($0, RSTART + 12, RLENGTH - 12)
+    $0 = substr($0, RSTART + RLENGTH)
+  }
+}' "$config" 2>/dev/null) || die "cannot read $config, which pins the clang-tidy version"
+[[ -n $pins ]] || die "$config pins no clang-tidy version" \
+  "the clang-tidy-baseline hook names it as a clang-tidy==<version> requirement"
+[[ $pins != *$'\n'* ]] || die "$config pins more than one clang-tidy version:" "$pins"
+pin=$pins
+pinned_hint=(
+  "the pre-push hook runs clang-tidy $pin, which .pre-commit-config.yaml pins; run with it by hand as"
+  "  pre-commit run clang-tidy-baseline --hook-stage manual    (--check)"
+  "  uv run --no-project --with clang-tidy==$pin $0 ...    (any mode)"
+)
+
+tidy=${CLANG_TIDY:-clang-tidy}
 tidy_path=$(command -v "$tidy" || true)
-[[ -n $tidy_path ]] || die "clang-tidy not found: $tidy" "install it with: brew install llvm, or set CLANG_TIDY to the clang-tidy to use"
-runner="$(dirname "$tidy_path")/run-clang-tidy"
-[[ -x $runner ]] || runner=$(command -v run-clang-tidy || true)
-[[ -n $runner ]] || die "run-clang-tidy not found" "install it with: brew install llvm"
+[[ -n $tidy_path ]] || die "clang-tidy not found: $tidy, neither as a path nor on PATH" "${pinned_hint[@]}"
+# The runner next to clang-tidy belongs to the same LLVM; one elsewhere on PATH
+# could be another LLVM's.
+runner=
+for candidate in "$(dirname "$tidy_path")"/run-clang-tidy{,.py} run-clang-tidy{,.py}; do
+  runner=$(command -v "$candidate" || true)
+  [[ -z $runner ]] || break
+done
+[[ -n $runner ]] || die "run-clang-tidy not found next to $tidy_path or on PATH" "${pinned_hint[@]}"
 # Both run after a cd into DIR, so a path relative to here must not reach them.
 tidy_path=$(abspath_file "$tidy_path")
 runner=$(abspath_file "$runner")
 version_out=$("$tidy_path" --version 2>&1) || die "cannot run $tidy_path --version:" "$version_out"
 version=$(printf '%s\n' "$version_out" | awk 'tolower($0) ~ /version/ { sub(/^[ \t]+/, ""); print; exit }')
+# The repository's baseline is written and checked with the pinned clang-tidy
+# only, so that a clang-tidy on PATH or in CLANG_TIDY cannot write another
+# version into it, nor pass against a baseline that version wrote.
+if [[ -n $is_default && $mode != count && $version != "LLVM version $pin" ]]; then
+  details=("running: $version ($tidy_path)" "pinned:  LLVM version $pin")
+  [[ -z ${CLANG_TIDY:-} ]] || details+=("CLANG_TIDY selected this clang-tidy; unset it to take clang-tidy from PATH")
+  die "--$mode with $baseline needs the pinned clang-tidy" "${details[@]}" "${pinned_hint[@]}"
+fi
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -278,7 +320,7 @@ flags, with the run-clang-tidy of LLVM 21 or 23, whose output this script reads)
   git worktree add <dir> <base commit>
   git -C <dir> submodule update --init --recursive
   configure <dir> and this tree the same way, with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-  set CLANG_TIDY to the clang-tidy to use, unless the builds set TCAPI_CLANG_TIDY
+  put the clang-tidy to use first on PATH, or set CLANG_TIDY to it
   $0 --update --baseline <file> --root <dir> <dir's build directory>
   $0 --check --baseline <file> <this tree's build directory>
 CONTRIBUTING.md describes this. To push without the check: SKIP=clang-tidy-baseline git push
@@ -299,6 +341,12 @@ if [[ $mode == check ]]; then
   if [[ $base_version != "$version" ]]; then
     printf 'error: clang-tidy version differs from the baseline; nothing was compared\n' >&2
     printf '  baseline: %s\n  running:  %s\n' "$base_version" "$version" >&2
+    # The running clang-tidy is the pinned one here, so the baseline is stale.
+    if [[ -n $is_default ]]; then
+      printf '%s pins clang-tidy %s; rewrite the baseline with it:\n  uv run --no-project --with clang-tidy==%s %s --update%s\n' \
+        "$config" "$pin" "$pin" "$0" "$rerun" >&2
+      exit 1
+    fi
     fallback_hint
     exit 1
   fi
@@ -379,12 +427,7 @@ cmake_command=$(cache_value CMAKE_COMMAND)
 # EXPORT_COMPILE_COMMANDS off; removing it first keeps a stale one from being
 # read as current.
 rm -f "$build/compile_commands.json"
-# The macOS Homebrew toolchain runs `brew --prefix` on every configure, and a
-# GUI client's PATH lacks Homebrew. Look for brew where Homebrew installs it,
-# on Apple silicon and on Intel, after the directory of the CMake used.
-cmake_path=/opt/homebrew/bin:/usr/local/bin:$PATH
-[[ $cmake_command != /* ]] || cmake_path=$(dirname -- "$cmake_command"):$cmake_path
-if ! PATH=$cmake_path "$cmake_command" "$build" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON >"$work/cmake.log" 2>&1; then
+if ! "$cmake_command" "$build" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON >"$work/cmake.log" 2>&1; then
   cat "$work/cmake.log" >&2
   die "re-running CMake on $build failed"
 fi
@@ -421,6 +464,17 @@ missing=$(LC_ALL=C comm -23 "$work/disk-sources" "$work/db-sources")
     "$missing" "a unity build or a source CMake does not compile leaves them out"
 nsources=$(count_lines "$work/db-sources")
 ((nsources > 0)) || die "no source under $root/source is in $build/compile_commands.json"
+
+# The options that make clang-tidy search the system include directories the
+# build's compiler searches, one per line; see the header.
+command -v python3 >/dev/null || die "python3 not found on PATH" \
+  "it runs scripts/system_includes.py, which finds the build compiler's system include directories"
+sysinc=$(python3 "$script_repo/scripts/system_includes.py" --root "$root" "$build/compile_commands.json" 2>&1) \
+  || die "could not find the system include directories of the TCAPI sources' compiler:" "$sysinc"
+extra_args=()
+while IFS= read -r flag; do
+  extra_args+=("-extra-arg=$flag")
+done <<<"$sysinc"
 
 # One `config\t<source>\t<options>` line per source.
 awk -F'\t' "${norm_vars[@]}" "$awk_lib"'
@@ -623,7 +677,7 @@ done <"$work/db-sources"
 # partial run is not a baseline, so stop. It runs from DIR because it reads
 # the .clang-tidy of its working directory before analyzing.
 if ! (cd "$root" && "$runner" -clang-tidy-binary "$tidy_path" -p "$build" -use-color=false \
-  "${file_patterns[@]}") >"$work/raw" 2>&1; then
+  "${extra_args[@]}" "${file_patterns[@]}") >"$work/raw" 2>&1; then
   grep -E ': (error|fatal error):' "$work/raw" >&2 || tail -20 "$work/raw" >&2
   die "clang-tidy failed; the count is not valid"
 fi

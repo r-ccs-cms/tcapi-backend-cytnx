@@ -63,12 +63,12 @@
     },
     {
       "name": "brew-tidy",
-      "displayName": "clang-tidy build with Homebrew dependencies",
-      "description": "macOS debug build that runs Homebrew LLVM's clang-tidy on TCAPI's sources",
+      "displayName": "clang-tidy baseline build with Homebrew dependencies",
+      "description": "macOS debug build that exports the compile commands scripts/tidy-count.sh reads",
       "inherits": "brew",
       "binaryDir": "build-tidy",
       "cacheVariables": {
-        "TCAPI_CLANG_TIDY": "/opt/homebrew/opt/llvm/bin/clang-tidy",
+        "TCAPI_CLANG_TIDY": "",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },
