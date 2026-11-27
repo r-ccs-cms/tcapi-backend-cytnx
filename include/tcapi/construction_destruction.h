@@ -1,9 +1,7 @@
 #pragma once
 
-#include <complex>
+#include <cstddef>
 #include <functional>
-#include <type_traits>
-#include <utility>
 
 #include "tcapi/cytnx_tensor_traits.h"
 #include "tcapi/read_only_getters.h"

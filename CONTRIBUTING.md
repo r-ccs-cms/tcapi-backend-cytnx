@@ -1,12 +1,6 @@
 # Contributing
 
-## clang-tidy
-
-clang-tidy checks the TCAPI library's own sources (`source/` and the headers under `include/tcapi/`) with the checks in `.clang-tidy`. Cytnx, the tests and the examples are not checked.
-
-The repository records every warning clang-tidy reports in `.clang-tidy-baseline`. The rule is that a pull request's diff shows every change in those warnings and its description explains it: a pull request may add a warning only when it says why.
-
-### Setup
+## Setup
 
 On macOS with Homebrew:
 
@@ -16,7 +10,9 @@ cmake --preset brew-tidy
 pre-commit validate-config .pre-commit-config.yaml && pre-commit install
 ```
 
-`cmake --preset brew-tidy` configures `build-tidy`, which runs Homebrew LLVM's clang-tidy on the library's sources as they compile and exports the `compile_commands.json` the baseline check reads. `pre-commit install` needs pre-commit 3.6.0 or later, which itself needs Python 3.9 or later, and installs hooks that run clang-format, ShellCheck and shfmt before each commit, and the baseline check before each push. `pre-commit validate-config` fails on an older pre-commit before anything is installed. Without it, an older `pre-commit install` would succeed but install only the commit hook, which then stops every commit, and no push hook. Upgrade pre-commit to 3.6.0 or later and run the commands again.
+Install [include-what-you-use](#include-what-you-use) as well, by any means that puts it on `PATH`.
+
+`cmake --preset brew-tidy` configures `build-tidy`, which runs Homebrew LLVM's clang-tidy on the library's sources as they compile and exports the `compile_commands.json` the baseline check reads. `pre-commit install` needs pre-commit 3.6.0 or later, which itself needs Python 3.9 or later, and installs hooks that run clang-format, ShellCheck, shfmt and the [include-what-you-use](#include-what-you-use) check before each commit and each merge commit, and the baseline check before each push. Run `pre-commit install` again whenever `default_install_hook_types` in `.pre-commit-config.yaml` changes, since it installs only the hook types listed when it runs. `pre-commit validate-config` fails on an older pre-commit before anything is installed. Without it, an older `pre-commit install` would succeed but install only the commit hook, which then stops every commit, and no other hook. Upgrade pre-commit to 3.6.0 or later and run the commands again.
 
 `pre-commit install` refuses to install hooks when your git configuration sets `core.hooksPath`. Override the setting for that one command:
 
@@ -24,7 +20,13 @@ pre-commit validate-config .pre-commit-config.yaml && pre-commit install
 pre-commit validate-config .pre-commit-config.yaml && GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0= pre-commit install
 ```
 
-The hooks are then in `.git/hooks`, and git still runs the hooks in the `core.hooksPath` directory. They run only if that directory's hooks run the ones in `.git/hooks`. If yours do not, run `scripts/tidy-count.sh --check` yourself before pushing.
+The hooks are then in `.git/hooks`, and git still runs the hooks in the `core.hooksPath` directory. They run only if that directory's hooks run the ones in `.git/hooks`. If yours do not, run `pre-commit run iwyu` before committing, which sets unstaged changes aside as the hook does, and `scripts/tidy-count.sh --check` before pushing.
+
+## clang-tidy
+
+clang-tidy checks the TCAPI library's own sources (`source/` and the headers under `include/tcapi/`) with the checks in `.clang-tidy`. Cytnx, the tests and the examples are not checked.
+
+The repository records every warning clang-tidy reports in `.clang-tidy-baseline`. The rule is that a pull request's diff shows every change in those warnings and its description explains it: a pull request may add a warning only when it says why.
 
 ### Checking and updating the baseline
 
@@ -97,3 +99,28 @@ These guarantees hold for the setup this guide describes:
 They also assume that source text does not imitate clang-tidy's own output. A diagnostic message whose own text spans several lines can be misread if one of those lines looks like a `file:L:C: warning:` line, a source excerpt line such as `   12 | `, or a check list such as `[module-check]`. A NOLINT line is judged on its own, so a line whose split into code and comment depends on a block comment opened on an earlier line can be misjudged. Outside these bounds the script stops where it can tell, and may otherwise miss a change.
 
 pre-commit runs the hook only when it finds that the push adds commits, which it judges from your local remote-tracking refs. After a branch was deleted on the remote, run `git fetch --prune` before pushing it again.
+
+## include-what-you-use
+
+[include-what-you-use](https://github.com/include-what-you-use/include-what-you-use) (IWYU) checks that each header under `include/tcapi/` includes a header for every name it uses and none it does not use. It analyzes each header as its own main file, so every header must also compile on its own.
+
+The pre-commit hook runs `scripts/iwyu-check.py` on each commit and merge commit it is run for, whatever files the commit changes, and takes several seconds, since it configures a build and runs IWYU on every header. Run the script yourself to check the working tree, and `SKIP=iwyu git commit` to commit without the check. Where the `brew` preset cannot be configured, commit with `SKIP=iwyu`.
+
+When a header fails, the script prints the includes IWYU asks to add and to remove, or the errors that stopped it. Make those changes, except where one of the pragmas below applies.
+
+The script takes `cmake` and `include-what-you-use` from `PATH`. It configures its own build directory, `build-iwyu`, with the `brew` preset on every run, so it also needs what `cmake --preset brew` needs, and analyzes the headers with the options the TCAPI sources compile with there. It gives IWYU the system include directories the build's compiler reports for those options, so IWYU reads the standard library the build uses even when its own clang would not find one, as with nixpkgs' include-what-you-use on macOS. The configure starts from an empty CMake cache each time, so a cache value from an earlier run, such as the old default of an option a commit changes, is not carried into the check.
+
+The headers were made clean with IWYU 0.27 against Apple clang's libc++, the compiler the `brew` preset takes by default. Another IWYU version or another standard library can ask for changes to headers nobody changed: against GCC's libstdc++, for one, IWYU asks to remove an include that the libc++ result keeps. When a header fails, the script prints the IWYU version it ran and the compiler whose standard library it read, and says so when the version is not 0.27. With `CXX` set, the configure takes the compiler it names; run the script with `CXX` unset.
+
+IWYU reads the working tree, where pre-commit has set aside unstaged changes to tracked files but not untracked files or changes inside a submodule. So the script stops before analyzing anything when a file under `include/` or `external/Cytnx/include/` is not tracked by git, editor and Finder files (`*~`, `*.swp`, `*.swo`, `#*#`, `.#*`, `.DS_Store`) aside, when `external/Cytnx` has edited files or is checked out at a commit other than the one the index records, and when a sparse checkout leaves out a header under `include/tcapi/`.
+
+### Pragmas
+
+IWYU does not see every reason a header includes another. These pragmas keep what IWYU would otherwise ask to remove:
+
+- `cytnx_tensor_traits.h` has `// IWYU pragma: always_keep`, so IWYU keeps every include of it. The templates in a header such as `read_only_getters.h` name members of `tensor_traits<TenT>` in their declarations, and the primary `tensor_traits` is never defined, so calling one with a `CytnxTensor` needs the specializations in `cytnx_tensor_traits.h`. IWYU does not see that need in the header that includes it.
+- An include at the end of a header that brings in its implementation has `// IWYU pragma: keep`, as in `io_operations.h`, `miscellaneous.h` and `version.h.in`.
+- The declaration of the primary `tensor_traits` template in `tensor_traits.h` has `// IWYU pragma: keep`, since IWYU takes it for a forward declaration nothing needs.
+- The includes of `tcapi.h`, the header users include, are between `// IWYU pragma: begin_exports` and `// IWYU pragma: end_exports`.
+
+A pragma for a case not listed here gets a comment saying why.

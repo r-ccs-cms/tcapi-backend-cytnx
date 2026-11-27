@@ -4,8 +4,6 @@
 #include <cytnx.hpp>
 #include <filesystem>
 #include <fstream>
-#include <istream>
-#include <ostream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -17,6 +15,9 @@
 
 #include "tcapi/cytnx_tensor_traits.h"
 #include "tcapi/cytnx_typed_tensor.h"
+// io_operations.h includes this file on its last line, so #pragma once skips
+// this include there; it lets the file compile on its own.
+#include "tcapi/io_operations.h"  // IWYU pragma: keep
 #include "tcapi/tensor_traits.h"
 
 namespace tcapi::detail {

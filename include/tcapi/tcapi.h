@@ -1,5 +1,6 @@
 #pragma once
 
+// IWYU pragma: begin_exports
 #include "tcapi/construction_destruction.h"
 #include "tcapi/cytnx_tensor_traits.h"
 #include "tcapi/cytnx_typed_tensor_impl.h"
@@ -11,6 +12,7 @@
 #include "tcapi/tensor_manipulation.h"
 #include "tcapi/tensor_traits.h"
 #include "tcapi/version.h"
+// IWYU pragma: end_exports
 
 /**
  * @file tcapi.h

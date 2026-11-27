@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cytnx.hpp>
+#include <cstddef>
 
 #include "tcapi/cytnx_tensor_traits.h"
 #include "tcapi/tensor_traits.h"

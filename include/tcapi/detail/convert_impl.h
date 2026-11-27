@@ -1,11 +1,16 @@
 #pragma once
 
+#include <cstddef>
 #include <cytnx.hpp>
 #include <sstream>
+#include <string>
+#include <type_traits>
+#include <utility>
 
 #include "tcapi/cytnx_tensor_traits.h"
 #include "tcapi/cytnx_typed_tensor.h"
 #include "tcapi/debugging.h"
+#include "tcapi/tensor_traits.h"
 
 namespace tcapi {
 

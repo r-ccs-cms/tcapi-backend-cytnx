@@ -1,7 +1,10 @@
 #pragma once
 
-#include <cytnx.hpp>
+#include <cstddef>
+#include <functional>
+#include <iterator>
 
+#include "tcapi/context_handle.h"
 #include "tcapi/cytnx_tensor_traits.h"
 #include "tcapi/read_only_getters.h"
 #include "tcapi/tensor_traits.h"
@@ -101,4 +104,4 @@ namespace tcapi {
 }  // namespace tcapi
 
 // Include implementation for CytnxTensor type conversions
-#include "tcapi/detail/convert_impl.h"
+#include "tcapi/detail/convert_impl.h"  // IWYU pragma: keep

@@ -2,13 +2,19 @@
 
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <cstdint>
 #include <cstdlib>
 #include <cytnx.hpp>
+#include <exception>
+#include <functional>
 #include <iostream>
-#include <limits>
+#include <iterator>
+#include <numeric>
+#include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -16,7 +22,9 @@
 #include "tcapi/construction_destruction.h"
 #include "tcapi/cytnx_tensor_traits.h"
 #include "tcapi/cytnx_typed_tensor.h"
+#include "tcapi/read_only_getters.h"
 #include "tcapi/tensor_linear_algebra.h"
+#include "tcapi/tensor_manipulation.h"
 #include "tcapi/tensor_traits.h"
 
 namespace tcapi {

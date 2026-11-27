@@ -75,4 +75,4 @@ namespace tcapi {
 
 }  // namespace tcapi
 
-#include "tcapi/detail/cytnx_io_adapter.h"
+#include "tcapi/detail/cytnx_io_adapter.h"  // IWYU pragma: keep

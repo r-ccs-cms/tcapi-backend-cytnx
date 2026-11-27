@@ -2,6 +2,7 @@
 
 #include <cstdlib>
 #include <iomanip>
+#include <iostream>
 
 namespace tcapi {
   namespace debug {

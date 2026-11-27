@@ -1,9 +1,6 @@
 #pragma once
 
-#include <complex>
-#include <cstddef>
 #include <functional>
-#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -33,7 +30,7 @@ namespace tcapi {
    *
    * @tparam TenT The tensor type from the underlying library
    */
-  template <typename TenT> struct tensor_traits;
+  template <typename TenT> struct tensor_traits;  // IWYU pragma: keep
 
   // Auxiliary types as specified in the TCAPI standard
 
