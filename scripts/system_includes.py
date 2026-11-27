@@ -140,10 +140,11 @@ def named_dirs(
     separate=INCLUDE_DIR_OPTIONS,
     joined=JOINED_INCLUDE_DIR_OPTIONS,
 ):
-    """The directories the options themselves name for the include search,
-    with the options in separate taking the directory as their next argument
-    and those in joined also as a suffix, as INCLUDE_DIR_OPTIONS and
-    JOINED_INCLUDE_DIR_OPTIONS describe."""
+    """The directories the options themselves name for the include search:
+    the argument after an option in separate, and the rest of an argument
+    that starts with an option in joined, as -I/path does, an argument equal
+    to an option in separate excepted. INCLUDE_DIR_OPTIONS and
+    JOINED_INCLUDE_DIR_OPTIONS describe the defaults."""
     dirs = set()
     rest = iter(options)
     for arg in rest:

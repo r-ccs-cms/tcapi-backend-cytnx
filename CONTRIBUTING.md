@@ -91,7 +91,7 @@ Explain in the pull request what this shows. Someone with the baseline's environ
 
 ### Limits
 
-The check does not see a warning that replaces a fixed one with the same file, check, message and line text, nor one suppressed diagnostic replacing another under the same directives with every count unchanged, nor, in the rare case that the block's checksum collides, an edit inside a `NOLINTBEGIN` block. It records only the compile options named above, not, for example, `-arch`, `-O` or `-f` options, nor the versions of dependencies found through include paths. A change in any of those can change the warnings; the check then fails, and the pull request that makes the change updates the baseline.
+The check does not see a warning that replaces a fixed one with the same file, check, message and line text, nor one suppressed diagnostic replacing another under the same directives with every count unchanged, nor, in the rare case that the block's checksum collides, an edit inside a `NOLINTBEGIN` block. It records only the compile options named above, not, for example, `-arch`, `-O` or `-f` options, nor the versions of dependencies found through include paths, the standard library of the build's compiler, such as the macOS SDK's libc++, included. A change in any of those can change the warnings; the check then fails, and the pull request that makes the change updates the baseline. Where your environment differs from the baseline's in one of them, such as another macOS SDK, the check can fail for entries your change did not touch; compare with the base commit in your environment instead, as [The baseline's environment](#the-baselines-environment) describes.
 
 These guarantees hold for the setup this guide describes:
 
