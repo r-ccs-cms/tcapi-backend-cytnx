@@ -188,8 +188,11 @@ build=$(abspath "$build_arg")
 config=$script_repo/.pre-commit-config.yaml
 pins=$(awk '{
   sub(/#.*/, "")
-  while (match($0, /clang-tidy==[0-9][0-9A-Za-z.]*/)) {
-    print substr($0, RSTART + 12, RLENGTH - 12)
+  # pip also reads the requirement with spaces around ==.
+  while (match($0, /clang-tidy *== *[0-9][0-9A-Za-z.]*/)) {
+    req = substr($0, RSTART, RLENGTH)
+    sub(/^clang-tidy *== */, "", req)
+    print req
     $0 = substr($0, RSTART + RLENGTH)
   }
 }' "$config" 2>/dev/null) || die "cannot read $config, which pins the clang-tidy version"
@@ -209,7 +212,8 @@ update_cmd="$with_pin $self --update$rerun"
 pinned_hint=(
   "the pre-push hook runs clang-tidy $pin, which .pre-commit-config.yaml pins; run with it by hand as"
   "  pre-commit run clang-tidy-baseline --hook-stage manual    (--check)"
-  "  $with_pin $self ...    (any mode)"
+  "  $with_pin $self ...    (any mode, with uv)"
+  "or with the PyPI wheel clang-tidy==$pin installed by other means first on PATH"
 )
 # What to do about a missing clang-tidy: the pinned one for the repository's
 # baseline, any for another baseline, as in the fallback comparison.
