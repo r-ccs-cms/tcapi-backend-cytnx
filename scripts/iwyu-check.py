@@ -14,11 +14,10 @@ The compile options come from a build the script configures itself, in
 build-iwyu with the brew preset and an empty CMake cache, on every run; no
 other build is touched. It removes the database and the generated headers
 there first, so that a configure that does not write them leaves none behind
-to be read. All TCAPI
-sources compile with one set of options, which the headers are analyzed with.
-IWYU is also given the system include directories the build's compiler reports
-for those options, so that it reads the standard library the build uses rather
-than one of its own.
+to be read. All TCAPI sources compile with one set of options, which the
+headers are analyzed with. IWYU is also given the system include directories
+the build's compiler reports for those options, so that it reads the standard
+library the build uses rather than one of its own.
 
 IWYU reads the working tree, which pre-commit has reduced to what is staged,
 except for files git does not track and for submodules. So the script first
