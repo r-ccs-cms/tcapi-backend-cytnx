@@ -28,7 +28,8 @@
 # version line is `LLVM version X.Y.Z`, X.Y.Z being the pin's LLVM release, its
 # first three parts: the line that wheel prints. Run with it by hand as
 #   pre-commit run clang-tidy-baseline --hook-stage manual    (--check)
-#   uv run --no-project --with clang-tidy==<pin> scripts/tidy-count.sh ...
+#   env -u CLANG_TIDY uv run --no-project --with clang-tidy==<pin> \
+#     scripts/tidy-count.sh ...
 # clang-tidy is also given the system include directories the build's compiler
 # searches (see scripts/system_includes.py, which the script runs with python3
 # from PATH, for what it requires of the sources): a clang-tidy built apart
@@ -199,17 +200,26 @@ pin=$pins
 [[ $pin =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] \
   || die "$config pins clang-tidy $pin, which does not start with an LLVM release X.Y.Z"
 pin_release=${BASH_REMATCH[0]}
-# How to rewrite the repository's baseline, which takes the pinned clang-tidy.
-update_cmd="uv run --no-project --with clang-tidy==$pin $0 --update$rerun"
+# How to run with the pinned clang-tidy, which the repository's baseline takes;
+# env -u keeps an exported CLANG_TIDY from replacing it, as in the hook.
+with_pin="env -u CLANG_TIDY uv run --no-project --with clang-tidy==$pin"
+update_cmd="$with_pin $0 --update$rerun"
 pinned_hint=(
   "the pre-push hook runs clang-tidy $pin, which .pre-commit-config.yaml pins; run with it by hand as"
   "  pre-commit run clang-tidy-baseline --hook-stage manual    (--check)"
-  "  uv run --no-project --with clang-tidy==$pin $0 ...    (any mode)"
+  "  $with_pin $0 ...    (any mode)"
 )
+# What to do about a missing clang-tidy: the pinned one for the repository's
+# baseline, any for another baseline, as in the fallback comparison.
+if [[ -n $is_default ]]; then
+  missing_hint=("${pinned_hint[@]}")
+else
+  missing_hint=("put the clang-tidy to compare with first on PATH, or set CLANG_TIDY to it")
+fi
 
 tidy=${CLANG_TIDY:-clang-tidy}
 tidy_path=$(command -v "$tidy" || true)
-[[ -n $tidy_path ]] || die "clang-tidy not found: $tidy, neither as a path nor on PATH" "${pinned_hint[@]}"
+[[ -n $tidy_path ]] || die "clang-tidy not found: $tidy, neither as a path nor on PATH" "${missing_hint[@]}"
 # The runner next to clang-tidy belongs to the same LLVM; one elsewhere on PATH
 # could be another LLVM's.
 runner=
@@ -217,7 +227,7 @@ for candidate in "$(dirname "$tidy_path")"/run-clang-tidy{,.py} run-clang-tidy{,
   runner=$(command -v "$candidate" || true)
   [[ -z $runner ]] || break
 done
-[[ -n $runner ]] || die "run-clang-tidy not found next to $tidy_path or on PATH" "${pinned_hint[@]}"
+[[ -n $runner ]] || die "run-clang-tidy not found next to $tidy_path or on PATH" "${missing_hint[@]}"
 # Both run after a cd into DIR, so a path relative to here must not reach them.
 tidy_path=$(abspath_file "$tidy_path")
 runner=$(abspath_file "$runner")

@@ -18,8 +18,9 @@ PyPI or include-what-you-use from nixpkgs, does not otherwise find the
 standard library the build uses on macOS. The output leaves out the
 compiler's builtin-header directory, which stays the tool's own, and every
 directory the options name themselves, which a tool that runs the compile
-commands reads from those options: those named with -I, -iquote, -idirafter,
--iframework or -F, and those passed as `-isystem <dir>`. The tool, given the
+commands reads from those options: those named with -I or -F, as `-I <dir>`
+or `-I<dir>`, with -iquote, -idirafter or -iframework followed by the
+directory, and with `-isystem <dir>`. The tool, given the
 output after the commands' own options, then searches those directories
 before the printed ones, where the compiler can search one of its own, such
 as /usr/local/include, before them: the directories are the compiler's, their

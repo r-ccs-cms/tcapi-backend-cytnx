@@ -35,10 +35,10 @@ scripts/tidy-count.sh --check    # compare them with .clang-tidy-baseline
 scripts/tidy-count.sh --update   # rewrite .clang-tidy-baseline
 ```
 
-The script runs the clang-tidy `CLANG_TIDY` names, else the one on `PATH`, and gives it the system include directories the build's compiler searches, so that it reads the standard library the build uses. With `.clang-tidy-baseline`, `--check` and `--update` stop unless that clang-tidy's version line is `LLVM version X.Y.Z`, X.Y.Z being the first three parts of the version `.pre-commit-config.yaml` pins, its LLVM release: the line the wheel the pre-push hook installs prints, a wheel rebuilt as `22.1.0.1` printing `22.1.0`. `pre-commit run clang-tidy-baseline --hook-stage manual` runs `--check` with it. For the other modes, put it on `PATH`, for example with [uv](https://docs.astral.sh/uv/), `<version>` being the pinned version:
+The script runs the clang-tidy `CLANG_TIDY` names, else the one on `PATH`, and gives it the system include directories the build's compiler searches, so that it reads the standard library the build uses. With `.clang-tidy-baseline`, `--check` and `--update` stop unless that clang-tidy's version line is `LLVM version X.Y.Z`, X.Y.Z being the first three parts of the version `.pre-commit-config.yaml` pins, its LLVM release: the line the wheel the pre-push hook installs prints, a wheel rebuilt as `22.1.0.1` printing `22.1.0`. `pre-commit run clang-tidy-baseline --hook-stage manual` runs `--check` with it. For the other modes, put it on `PATH` with `CLANG_TIDY` unset, for example with [uv](https://docs.astral.sh/uv/), `<version>` being the pinned version:
 
 ```bash
-uv run --no-project --with clang-tidy==<version> scripts/tidy-count.sh --update
+env -u CLANG_TIDY uv run --no-project --with clang-tidy==<version> scripts/tidy-count.sh --update
 ```
 
 `--check` fails on any difference and prints each changed entry with the change in its count. An entry names a warning by its file, check, message and the text of the line it is on, without the line number, so moving code does not change it. The baseline also records each NOLINT directive with the line it covers, or a checksum of a `NOLINTBEGIN` block's lines, and how many diagnostics NOLINT directives suppress in each source's translation unit, headers included, so a warning hidden by an existing directive shows as well.
