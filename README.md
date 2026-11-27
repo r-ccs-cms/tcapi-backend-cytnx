@@ -39,7 +39,7 @@ cd tcapi-backend-cytnx
 brew install openblas llvm libomp cmake boost arpack ninja
 ```
 
-The `brew*` presets build with AppleClang, the system `c++`, unless another compiler is selected; `llvm` is optional, except for `brew-tidy`, which runs its clang-tidy (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+The `brew*` presets build with AppleClang, the system `c++`, unless another compiler is selected; `llvm` is optional.
 
 #### Linux with Intel oneAPI (HPC environments)
 

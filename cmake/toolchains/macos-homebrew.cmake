@@ -3,12 +3,24 @@
 # Eliminates the need for manual environment variable exports
 
 if(NOT DEFINED HOMEBREW_PREFIX)
-  execute_process(
-    COMMAND brew --prefix
-    OUTPUT_VARIABLE HOMEBREW_PREFIX
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    ERROR_QUIET
+  # brew on PATH first, then next to the CMake running, as Homebrew's own
+  # CMake is, then where Homebrew installs it on Apple silicon and on Intel,
+  # for a configure whose PATH lacks Homebrew, as in a git hook a GUI client
+  # runs. NO_DEFAULT_PATH keeps out the bin directories of CMAKE_PREFIX_PATH,
+  # which find_program would search before PATH.
+  get_filename_component(_tcapi_cmake_dir "${CMAKE_COMMAND}" DIRECTORY)
+  find_program(_tcapi_brew brew
+    PATHS ENV PATH "${_tcapi_cmake_dir}" /opt/homebrew/bin /usr/local/bin
+    NO_DEFAULT_PATH NO_CACHE
   )
+  if(_tcapi_brew)
+    execute_process(
+      COMMAND "${_tcapi_brew}" --prefix
+      OUTPUT_VARIABLE HOMEBREW_PREFIX
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      ERROR_QUIET
+    )
+  endif()
 endif()
 
 if(NOT HOMEBREW_PREFIX)

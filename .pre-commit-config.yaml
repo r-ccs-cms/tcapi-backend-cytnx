@@ -50,13 +50,22 @@ repos:
       # CMakeLists.txt or the script, can change the results too.
       # pre-commit runs no pre-push hook for a branch deletion, or for a new
       # branch whose commits are all on the remote already.
+      # The requirement pins clang-tidy: pre-commit installs that PyPI wheel
+      # for the hook, and its LLVM release, the first three parts of its
+      # version, is the one .clang-tidy-baseline records, so the two change
+      # together. scripts/tidy-count.sh reads the pin from
+      # this file. The manual stage runs the check by hand:
+      #   pre-commit run clang-tidy-baseline --hook-stage manual
+      # env -u keeps a CLANG_TIDY exported for another comparison from
+      # replacing the pinned clang-tidy, which the script would otherwise run.
       - id: clang-tidy-baseline
         name: clang-tidy baseline
-        entry: scripts/tidy-count.sh --check
-        language: system
+        entry: env -u CLANG_TIDY scripts/tidy-count.sh --check
+        language: python
+        additional_dependencies: ["clang-tidy==23.1.4"]
         pass_filenames: false
         always_run: true
-        stages: [pre-push]
+        stages: [pre-push, manual]
       # Runs include-what-you-use on every header under include/tcapi/. It runs
       # whatever files the commit changes: pre-commit passes a hook no deleted
       # file, nor, under the default types, a submodule, and a change outside
