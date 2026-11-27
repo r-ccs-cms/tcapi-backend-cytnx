@@ -6,16 +6,20 @@ Usage: scripts/system_includes.py --root DIR DATABASE
 
 DATABASE is a compile_commands.json and DIR the source tree it was configured
 from. Every TCAPI source in it, those under DIR/source, must compile with one
-compiler, in one directory, with one set of options. The script asks that
+compiler, in one directory, with one set of options once the source itself,
+-c, -o with its output, and the warning options (-W..., but for -Wp, -Wl and
+-Wa) are left out; the script stops otherwise. It asks that
 compiler for its include search list under those options, and prints, one
 argument per line, the options that make a clang-based tool search the same
 system directories: -nostdinc++ -nostdlibinc, then each directory as
 -isystem, -idirafter or -iframework followed by the directory on the next
-line. A tool built apart from the system, such as the
-clang-tidy wheel from PyPI or include-what-you-use from nixpkgs, does not
-otherwise find the standard library the build uses on macOS. Directories the
-options already pass as `-isystem <dir>` are left out of the output, since a
-tool that runs the compile commands keeps those options. The tool, given the
+line. A tool built apart from the system, such as the clang-tidy wheel from
+PyPI or include-what-you-use from nixpkgs, does not otherwise find the
+standard library the build uses on macOS. The output leaves out the
+compiler's builtin-header directory, which stays the tool's own, and every
+directory the options name themselves, which a tool that runs the compile
+commands reads from those options: those named with -I, -iquote, -idirafter,
+-iframework or -F, and those passed as `-isystem <dir>`. The tool, given the
 output after the commands' own options, then searches those directories
 before the printed ones, where the compiler can search one of its own, such
 as /usr/local/include, before them: the directories are the compiler's, their

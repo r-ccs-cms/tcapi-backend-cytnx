@@ -25,16 +25,15 @@
 # PATH. The baseline records clang-tidy's version, and .pre-commit-config.yaml
 # pins the PyPI wheel of that version, which the pre-push hook installs; with
 # the repository's baseline, --check and --update stop unless clang-tidy's
-# version line is `LLVM version <pin>`, the line that wheel prints. Run with it
-# by hand as
+# version line is `LLVM version X.Y.Z`, X.Y.Z being the pin's LLVM release, its
+# first three parts: the line that wheel prints. Run with it by hand as
 #   pre-commit run clang-tidy-baseline --hook-stage manual    (--check)
 #   uv run --no-project --with clang-tidy==<pin> scripts/tidy-count.sh ...
 # clang-tidy is also given the system include directories the build's compiler
 # searches (see scripts/system_includes.py, which the script runs with python3
-# from PATH, and which stops unless every TCAPI source compiles with one
-# compiler, in one directory, with one set of options): a clang-tidy built
-# apart from the system, as that wheel is, does not otherwise find the
-# standard library the build uses on macOS.
+# from PATH, for what it requires of the sources): a clang-tidy built apart
+# from the system, as that wheel is, does not otherwise find the standard
+# library the build uses on macOS.
 #
 # The build log is not a usable count: an incremental build re-runs clang-tidy
 # only on the sources it recompiles, and the compiler's own -W warnings are
@@ -195,6 +194,11 @@ pins=$(awk '{
   "the clang-tidy-baseline hook names it as a clang-tidy==<version> requirement"
 [[ $pins != *$'\n'* ]] || die "$config names more than one clang-tidy==<version> requirement:" "$pins"
 pin=$pins
+# The wheel's version can carry a fourth part for a rebuild of one LLVM
+# release, as 22.1.0.1 does; its clang-tidy prints the release, 22.1.0.
+[[ $pin =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] \
+  || die "$config pins clang-tidy $pin, which does not start with an LLVM release X.Y.Z"
+pin_release=${BASH_REMATCH[0]}
 # How to rewrite the repository's baseline, which takes the pinned clang-tidy.
 update_cmd="uv run --no-project --with clang-tidy==$pin $0 --update$rerun"
 pinned_hint=(
@@ -223,8 +227,8 @@ version=$(printf '%s\n' "$version_out" | awk 'tolower($0) ~ /version/ { sub(/^[ 
 # version line is the pinned wheel's, so that a clang-tidy on PATH or in
 # CLANG_TIDY printing another line cannot write it into the baseline, nor pass
 # against a baseline such a clang-tidy wrote.
-if [[ -n $is_default && $mode != count && $version != "LLVM version $pin" ]]; then
-  details=("running: $version ($tidy_path)" "pinned:  LLVM version $pin")
+if [[ -n $is_default && $mode != count && $version != "LLVM version $pin_release" ]]; then
+  details=("running: $version ($tidy_path)" "pinned:  LLVM version $pin_release")
   [[ -z ${CLANG_TIDY:-} ]] || details+=("CLANG_TIDY selected this clang-tidy; unset it to take clang-tidy from PATH")
   die "--$mode with $baseline needs a clang-tidy printing the pinned version line" "${details[@]}" "${pinned_hint[@]}"
 fi
@@ -321,7 +325,8 @@ fallback_hint() {
   cat >&2 <<EOF
 To compare in this environment, measure the change's base commit here too
 (GCC or Clang builds only, since clang-tidy cannot read the intel-* toolchain's
-flags, with the run-clang-tidy of LLVM 21 or 23, whose output this script reads):
+flags, with the run-clang-tidy of LLVM 21 or 23, whose output this script reads,
+and python3 on PATH):
   git worktree add <dir> <base commit>
   git -C <dir> submodule update --init --recursive
   configure <dir> and this tree the same way, with -DCMAKE_EXPORT_COMPILE_COMMANDS=ON

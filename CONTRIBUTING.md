@@ -35,7 +35,7 @@ scripts/tidy-count.sh --check    # compare them with .clang-tidy-baseline
 scripts/tidy-count.sh --update   # rewrite .clang-tidy-baseline
 ```
 
-The script runs the clang-tidy `CLANG_TIDY` names, else the one on `PATH`, and gives it the system include directories the build's compiler searches, so that it reads the standard library the build uses. With `.clang-tidy-baseline`, `--check` and `--update` stop unless that clang-tidy's version line is `LLVM version <version>`, with the version `.pre-commit-config.yaml` pins: the line the wheel the pre-push hook installs prints. `pre-commit run clang-tidy-baseline --hook-stage manual` runs `--check` with it. For the other modes, put it on `PATH`, for example with [uv](https://docs.astral.sh/uv/), `<version>` being the pinned version:
+The script runs the clang-tidy `CLANG_TIDY` names, else the one on `PATH`, and gives it the system include directories the build's compiler searches, so that it reads the standard library the build uses. With `.clang-tidy-baseline`, `--check` and `--update` stop unless that clang-tidy's version line is `LLVM version X.Y.Z`, X.Y.Z being the first three parts of the version `.pre-commit-config.yaml` pins, its LLVM release: the line the wheel the pre-push hook installs prints, a wheel rebuilt as `22.1.0.1` printing `22.1.0`. `pre-commit run clang-tidy-baseline --hook-stage manual` runs `--check` with it. For the other modes, put it on `PATH`, for example with [uv](https://docs.astral.sh/uv/), `<version>` being the pinned version:
 
 ```bash
 uv run --no-project --with clang-tidy==<version> scripts/tidy-count.sh --update
@@ -76,7 +76,7 @@ code; // NOLINT(<checks>): <reason>
 
 The baseline belongs to the clang-tidy version and the build configuration it records: its first lines hold the version and each source's `-D`, `-U`, `-std`, `-include`, `-include-pch` and `-imacros` options, as CMake's precompiled headers pass them included. `--check` compares nothing when the version differs, or when a source present in both the baseline and your build has different options, because the warnings then differ for reasons other than the code. A source added or removed is a change in the code, and shows as changed entries. A pull request that upgrades clang-tidy changes the version `.pre-commit-config.yaml` pins, runs `--update` with it, and explains the change by itself; one that changes the configuration runs `--update` and does the same.
 
-Without the baseline's environment, compare your change with its base commit in your own environment instead. This needs a build configured with GCC or Clang, since clang-tidy cannot read the compile options of the `intel-*` presets, and the `run-clang-tidy` of LLVM 21 or 23, the versions whose output format the script has been checked against. Every run also needs `python3` on `PATH`, which finds the system include directories of the build's compiler, and TCAPI sources that all compile with one compiler, in one directory, with one set of options.
+Without the baseline's environment, compare your change with its base commit in your own environment instead. This needs a build configured with GCC or Clang, since clang-tidy cannot read the compile options of the `intel-*` presets, and the `run-clang-tidy` of LLVM 21 or 23, the versions whose output format the script has been checked against. Every run also needs `python3` on `PATH`, which runs `scripts/system_includes.py` to find the system include directories of the build's compiler; its usage, `scripts/system_includes.py --help`, says what it requires of the build's compile commands.
 
 ```bash
 git worktree add ../base <base commit>
@@ -96,7 +96,7 @@ The check does not see a warning that replaces a fixed one with the same file, c
 These guarantees hold for the setup this guide describes:
 
 - the clang-tidy wheel `.pre-commit-config.yaml` pins, given the system include directories of the build's compiler, or in the fallback above a clang-tidy with the `run-clang-tidy` of LLVM 21 or 23;
-- a build whose TCAPI compile commands run in the build directory, name their include directories by absolute path, use no response file, and all have one compiler and one set of options; a `brew-tidy` build under `/opt/homebrew`, the Apple silicon prefix the `brew` presets assume, is one;
+- a build whose TCAPI compile commands run in the build directory, name their include directories by absolute path, use no response file, and meet what `scripts/system_includes.py --help` requires; a `brew-tidy` build under `/opt/homebrew`, the Apple silicon prefix the `brew` presets assume, is one;
 - pushes of one branch from a clean checkout whose remote-tracking refs are current.
 
 They also assume that source text does not imitate clang-tidy's own output. A diagnostic message whose own text spans several lines can be misread if one of those lines looks like a `file:L:C: warning:` line, a source excerpt line such as `   12 | `, or a check list such as `[module-check]`. A NOLINT line is judged on its own, so a line whose split into code and comment depends on a block comment opened on an earlier line can be misjudged. Outside these bounds the script stops where it can tell, and may otherwise miss a change.
