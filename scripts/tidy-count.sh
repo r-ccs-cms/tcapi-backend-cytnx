@@ -87,8 +87,9 @@
 # checks.
 #
 # Run by pre-commit at pre-push, the script also requires that the pushed
-# commit is HEAD, that `git status` lists no change pre-commit leaves in place
-# when told to show every untracked file and submodule change (untracked
+# commit is HEAD, and, at pre-push or at the manual stage, that `git status`
+# lists no change pre-commit leaves in place when told to show every untracked
+# file and submodule change (untracked
 # files inside a submodule aside), and that no
 # ignored file lies under DIR/source or DIR/include, untracked and ignored
 # editor and Finder files aside. Changes git is told to
@@ -390,6 +391,11 @@ if [[ ${PRE_COMMIT:-} == 1 && -n ${PRE_COMMIT_REMOTE_NAME:-} ]]; then
   [[ $pushed == "$(git -C "$root" rev-parse HEAD)" ]] \
     || die "the pushed commit $pushed is not HEAD, which is what this check analyzes" \
       "check out the branch you push, and push one branch at a time"
+fi
+# Under pre-commit, at push and at the manual stage alike, the working tree
+# must be HEAD, the commit a push sends; pre-commit has set unstaged changes to
+# tracked files aside by then.
+if [[ ${PRE_COMMIT:-} == 1 ]]; then
   # Spelled out so that status.showUntrackedFiles and the submodule settings
   # cannot hide a change, untracked files inside a submodule aside, and ignored files under source/ and include/ count
   # too, since the analysis reads every file there but editor and Finder files.
